@@ -82,7 +82,7 @@ export function showToast(msg, type = 'error') {
     toast.style.transform = 'translateX(20px)';
     container.appendChild(toast);
     M.animate(toast, { opacity: 1, transform: 'translateX(0)' },
-      { duration: 0.3, easing: M.spring ? M.spring({ stiffness: 300, damping: 25 }) : 'ease-out' });
+      { duration: 0.3, easing: M.spring ? M.spring(0.3) : 'ease-out' });
   } else {
     container.appendChild(toast);
   }

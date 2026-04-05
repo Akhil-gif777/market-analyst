@@ -42,7 +42,7 @@ function showPanel(name) {
   const panel = document.getElementById(`panel-${name}`);
   if (panel) {
     panel.classList.add('active');
-    animatePanelIn(panel);
+    try { animatePanelIn(panel); } catch (e) { console.error('animatePanelIn error:', e); }
   }
 
   // Update tab active state
@@ -50,7 +50,7 @@ function showPanel(name) {
   const tab = document.querySelector(`.tab[data-panel="${name}"]`);
   if (tab) {
     tab.classList.add('active');
-    moveTabIndicator(document.getElementById('tab-indicator'), tab);
+    try { moveTabIndicator(document.getElementById('tab-indicator'), tab); } catch (e) { console.error('moveTabIndicator error:', e); }
   }
 
   // Auto-load data for certain panels

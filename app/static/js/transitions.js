@@ -16,7 +16,7 @@ export function moveTabIndicator(indicator, tab) {
   if (M && M.animate) {
     M.animate(indicator, { left: `${left}px`, width: `${width}px` }, {
       duration: 0.35,
-      easing: M.spring ? M.spring({ stiffness: 300, damping: 30 }) : 'ease-out',
+      easing: M.spring ? M.spring(0.35) : 'ease-out',
     });
   } else {
     indicator.style.left = `${left}px`;
@@ -32,7 +32,7 @@ export function animatePanelIn(panel) {
   if (M && M.animate) {
     M.animate(panel,
       { opacity: [0, 1], transform: ['translateY(12px)', 'translateY(0)'] },
-      { duration: 0.3, easing: M.spring ? M.spring({ stiffness: 200, damping: 25 }) : 'ease-out' }
+      { duration: 0.3, easing: M.spring ? M.spring(0.3) : 'ease-out' }
     );
   }
 }
@@ -56,7 +56,7 @@ export function animateNumber(el, from, to, opts = {}) {
   const obj = { val: from };
   M.animate(obj, { val: to }, {
     duration,
-    easing: M.spring ? M.spring({ stiffness: 150, damping: 20 }) : 'ease-out',
+    easing: M.spring ? M.spring(0.4) : 'ease-out',
     onUpdate: () => {
       el.textContent = format(obj.val);
     },
@@ -108,7 +108,7 @@ export function animateScoreBar(fillEl, pct) {
   if (M && M.animate) {
     M.animate(fillEl, { width: `${pct}%` }, {
       duration: 0.6,
-      easing: M.spring ? M.spring({ stiffness: 100, damping: 20 }) : 'ease-out',
+      easing: M.spring ? M.spring(0.6) : 'ease-out',
     });
   } else {
     setTimeout(() => {
@@ -133,7 +133,7 @@ export function animateExpand(el, open) {
     if (M && M.animate) {
       M.animate(el, { height: `${height}px`, opacity: [0, 1] }, {
         duration: 0.35,
-        easing: M.spring ? M.spring({ stiffness: 200, damping: 25 }) : 'ease-out',
+        easing: M.spring ? M.spring(0.3) : 'ease-out',
       }).then(() => { el.style.height = 'auto'; el.style.overflow = ''; });
     } else {
       el.style.transition = 'height 0.35s ease, opacity 0.35s ease';
