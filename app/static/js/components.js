@@ -1241,13 +1241,13 @@ export function tjRenderStats(p) {
   const pnlColor = (p.total_pnl || 0) >= 0 ? '#22c55e' : '#ef4444';
   const retColor = (p.total_return_pct || 0) >= 0 ? '#22c55e' : '#ef4444';
   document.getElementById('tj-stats').innerHTML = `
-    <div class="tj-stat"><div class="tj-stat-val">${p.open_positions + p.closed_positions}</div><div class="tj-stat-label">Total Trades</div></div>
-    <div class="tj-stat"><div class="tj-stat-val">${p.open_positions}</div><div class="tj-stat-label">Open</div></div>
-    <div class="tj-stat"><div class="tj-stat-val">${p.closed_positions}</div><div class="tj-stat-label">Closed</div></div>
-    <div class="tj-stat"><div class="tj-stat-val" style="color:${retColor}">${(p.total_return_pct || 0) >= 0 ? '+' : ''}${p.total_return_pct || 0}%</div><div class="tj-stat-label">Return</div></div>
-    <div class="tj-stat"><div class="tj-stat-val" style="color:${pnlColor}">$${Math.abs(p.total_pnl || 0).toFixed(2)}</div><div class="tj-stat-label">Total P&L</div></div>
-    <div class="tj-stat"><div class="tj-stat-val">${p.win_rate || 0}%</div><div class="tj-stat-label">Win Rate</div></div>
-    <div class="tj-stat"><div class="tj-stat-val">${p.wins || 0}/${p.losses || 0}</div><div class="tj-stat-label">W / L</div></div>
+    <div class="stat-card"><div class="stat-card-label">Total Trades</div><div class="stat-card-value">${p.open_positions + p.closed_positions}</div></div>
+    <div class="stat-card"><div class="stat-card-label">Open</div><div class="stat-card-value">${p.open_positions}</div></div>
+    <div class="stat-card"><div class="stat-card-label">Closed</div><div class="stat-card-value">${p.closed_positions}</div></div>
+    <div class="stat-card"><div class="stat-card-label">Return</div><div class="stat-card-value" style="color:${retColor}">${(p.total_return_pct || 0) >= 0 ? '+' : ''}${p.total_return_pct || 0}%</div></div>
+    <div class="stat-card"><div class="stat-card-label">Total P&L</div><div class="stat-card-value" style="color:${pnlColor}">$${Math.abs(p.total_pnl || 0).toFixed(2)}</div></div>
+    <div class="stat-card"><div class="stat-card-label">Win Rate</div><div class="stat-card-value">${p.win_rate || 0}%</div></div>
+    <div class="stat-card"><div class="stat-card-label">W / L</div><div class="stat-card-value">${p.wins || 0}/${p.losses || 0}</div></div>
   `;
 }
 
