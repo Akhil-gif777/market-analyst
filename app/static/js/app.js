@@ -797,14 +797,23 @@ async function tjLoad() {
   }
 }
 
+function tjGetFiltered() {
+  if (_tjFilter === 'all') return _tjTrades;
+  if (_tjFilter === 'open') return _tjTrades.filter(t => t.status === 'open');
+  if (_tjFilter === 'closed') return _tjTrades.filter(t => t.status === 'closed');
+  if (_tjFilter === 'wins') return _tjTrades.filter(t => t.status === 'closed' && (t.realized_pnl || 0) > 0);
+  if (_tjFilter === 'losses') return _tjTrades.filter(t => t.status === 'closed' && (t.realized_pnl || 0) <= 0);
+  return _tjTrades;
+}
+
 function tjRenderListInner() {
-  tjRenderList(_tjTrades, _tjFilter, _tjExpandedId);
+  tjRenderList(tjGetFiltered(), _tjFilter, _tjExpandedId);
 }
 
 function tjFilterHandler(f) {
   _tjFilter = f;
-  document.querySelectorAll('.tj-filter-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.querySelector(`.tj-filter-btn[data-filter="${f}"]`);
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.filter-btn[data-filter="${f}"]`);
   if (btn) btn.classList.add('active');
   tjRenderListInner();
 }
