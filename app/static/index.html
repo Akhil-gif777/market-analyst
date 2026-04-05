@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Analyst</title>
+<link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+
+<!-- Top progress bar (fixed, hidden by default) -->
+<div id="progress-bar" class="progress-bar">
+  <div class="progress-bar-fill"></div>
+</div>
+
+<div class="app">
+
+<header>
+  <div class="logo">
+    <span class="logo-dot"></span>
+    <h1><span class="logo-highlight">Market</span> Analyst</h1>
+  </div>
+  <span id="health-badge" class="health-badge">checking...</span>
+</header>
+
+<nav id="main-nav" class="tab-bar">
+  <div class="tab-bar-inner">
+    <button class="tab" data-panel="market">Market</button>
+    <button class="tab" data-panel="analyze">Analysis</button>
+    <button class="tab" data-panel="stock-analysis">Stock</button>
+    <button class="tab" data-panel="backtest">Backtest</button>
+    <button class="tab" data-panel="paper-trading">Paper Trading</button>
+    <button class="tab" data-panel="trade-journal">Journal</button>
+  </div>
+  <div class="tab-indicator" id="tab-indicator"></div>
+</nav>
+
+<!-- Market Overview Panel -->
+<div id="panel-market" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Market Overview</h2>
+    <div class="panel-actions">
+      <button class="btn btn-secondary" onclick="loadMarket()">Load Market Data</button>
+      <button class="btn btn-primary" onclick="runMarketOverview()" id="btn-market-overview">Generate AI Overview</button>
+    </div>
+  </div>
+  <div id="market-overview-content"></div>
+  <div id="market-content"></div>
+</div>
+
+<!-- Scan Panel -->
+<div id="panel-scan" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Scan News for Market-Moving Events</h2>
+  </div>
+  <p class="panel-desc">Fetches latest news from Alpha Vantage and uses LLM to extract market-moving events.</p>
+  <button onclick="runScan()" id="btn-scan" class="btn btn-primary">Run Scan</button>
+  <div id="scan-result"></div>
+</div>
+
+<!-- Events Panel -->
+<div id="panel-events" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Recent Events</h2>
+    <div class="panel-actions">
+      <button class="btn btn-secondary" onclick="loadEvents()">Load Events</button>
+    </div>
+  </div>
+  <div id="events-content"></div>
+</div>
+
+<!-- News Panel -->
+<div id="panel-news" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">News by Event</h2>
+    <div class="panel-actions">
+      <button class="btn btn-secondary" onclick="loadNews()">Load News</button>
+    </div>
+  </div>
+  <div id="news-content"></div>
+</div>
+
+<!-- Event Detail Panel -->
+<div id="panel-event-detail" class="panel">
+  <div id="event-detail-content"></div>
+</div>
+
+<!-- Report Panel -->
+<div id="panel-report" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Latest Analysis Report</h2>
+    <div class="panel-actions">
+      <button class="btn btn-secondary" onclick="loadReport()">Load Report</button>
+    </div>
+  </div>
+  <div id="report-content"></div>
+</div>
+
+<!-- Sectors Panel -->
+<div id="panel-sectors" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Sector Outlook</h2>
+    <div class="panel-actions">
+      <button class="btn btn-secondary" onclick="loadSectors()">Load Sectors</button>
+    </div>
+  </div>
+  <div id="sectors-content"></div>
+</div>
+
+<!-- Stock Analysis Panel -->
+<div id="panel-stock-analysis" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Stock Price Action Analysis</h2>
+  </div>
+  <div class="stock-search-bar">
+    <input type="text" id="stock-ticker-input" placeholder="Enter ticker (e.g. AAPL)"
+           class="input input-ticker" onkeydown="if(event.key==='Enter') runStockAnalysis()">
+    <button onclick="runStockAnalysis()" id="btn-stock-analyze" class="btn btn-primary">Analyze</button>
+  </div>
+  <p class="panel-desc">Multi-timeframe price action analysis with confluence scoring. Uses 6 Alpha Vantage calls + 1 LLM call.</p>
+  <div id="stock-analysis-content"></div>
+</div>
+
+<!-- Full Analysis Panel -->
+<div id="panel-analyze" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Full Market Analysis</h2>
+  </div>
+  <p class="panel-desc">Runs the complete pipeline: fetch news, extract events, build causal chains, evaluate stocks per event, and synthesize a holistic report.</p>
+  <div class="analysis-controls">
+    <button onclick="runFullAnalysis()" id="btn-analyze" class="btn btn-primary">Run Full Analysis</button>
+    <label class="select-label">
+      Max events:
+      <select id="max-events" class="input input-select">
+        <option value="3">3 (quick)</option>
+        <option value="5" selected>5 (default)</option>
+        <option value="10">10 (thorough)</option>
+      </select>
+    </label>
+  </div>
+  <div id="analyze-content"></div>
+</div>
+
+<!-- Backtest Panel -->
+<div id="panel-backtest" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Strategy Backtest</h2>
+  </div>
+  <div class="bt-config">
+    <div class="bt-field">
+      <label>Tickers</label>
+      <div class="bt-ticker-wrap-container">
+        <div class="bt-ticker-wrap" onclick="document.getElementById('bt-ticker-input').focus()">
+          <div id="bt-ticker-tags"></div>
+          <input type="text" id="bt-ticker-input" placeholder="Add ticker..." autocomplete="off" spellcheck="false" class="input">
+        </div>
+        <div id="bt-autocomplete" class="bt-autocomplete"></div>
+      </div>
+    </div>
+    <div class="bt-field">
+      <label>Date Range</label>
+      <div class="bt-date-row">
+        <input type="date" id="bt-start" value="2019-01-01" class="input">
+        <span>to</span>
+        <input type="date" id="bt-end" value="2025-12-31" class="input">
+      </div>
+    </div>
+    <div class="bt-field">
+      <label>Strategies</label>
+      <div class="bt-checkboxes">
+        <label><input type="checkbox" class="bt-strat-check" value="mean_reversion" checked> Mean Reversion</label>
+        <label><input type="checkbox" class="bt-strat-check" value="liquidity_sweep" checked> Liquidity Sweep</label>
+        <label><input type="checkbox" class="bt-strat-check" value="wyckoff_buy_only" checked> Wyckoff (Buy Only)</label>
+        <label><input type="checkbox" class="bt-strat-check" value="ensemble_buy" checked> Ensemble (3 Strategies)</label>
+        <label><input type="checkbox" class="bt-strat-check" value="ensemble_strict"> Ensemble Strict (2+ Agree)</label>
+        <label><input type="checkbox" class="bt-strat-check" value="confluence_score"> Confluence Score (Baseline)</label>
+        <label><input type="checkbox" class="bt-strat-check" value="failed_breakout"> Failed Breakout</label>
+      </div>
+    </div>
+    <div class="bt-field">
+      <label>Horizons</label>
+      <div class="bt-horizon-row">
+        <label><input type="checkbox" class="bt-horizon-check" value="5" checked> 5d</label>
+        <label><input type="checkbox" class="bt-horizon-check" value="10" checked> 10d</label>
+        <label><input type="checkbox" class="bt-horizon-check" value="20" checked> 20d</label>
+      </div>
+    </div>
+    <button onclick="runBacktest()" id="btn-backtest" class="btn btn-primary btn-run">Run Backtest</button>
+  </div>
+  <div id="bt-results"></div>
+</div>
+
+<!-- Paper Trading Panel -->
+<div id="panel-paper-trading" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Paper Trading</h2>
+  </div>
+  <div id="pt-content">
+    <div class="stat-cards" id="pt-summary-cards">
+      <div class="stat-card stat-card-primary"><div class="stat-card-label">Total Value</div><div class="stat-card-value" id="pt-total-value">&#8212;</div></div>
+      <div class="stat-card"><div class="stat-card-label">Cash</div><div class="stat-card-value" id="pt-cash">&#8212;</div></div>
+      <div class="stat-card"><div class="stat-card-label">Invested</div><div class="stat-card-value" id="pt-invested">&#8212;</div></div>
+      <div class="stat-card"><div class="stat-card-label">Total P&amp;L</div><div class="stat-card-value" id="pt-total-pnl">&#8212;</div></div>
+      <div class="stat-card"><div class="stat-card-label">Return</div><div class="stat-card-value" id="pt-return">&#8212;</div></div>
+      <div class="stat-card"><div class="stat-card-label">Win Rate</div><div class="stat-card-value" id="pt-winrate">&#8212;</div></div>
+      <div class="stat-card"><div class="stat-card-label">Open</div><div class="stat-card-value" id="pt-open-count">&#8212;</div></div>
+      <div class="stat-card"><div class="stat-card-label">Closed</div><div class="stat-card-value" id="pt-closed-count">&#8212;</div></div>
+    </div>
+    <div class="pt-actions">
+      <button class="btn btn-secondary" onclick="ptLoad()">Load Portfolio</button>
+      <button class="btn btn-primary" onclick="ptScan()" id="btn-pt-scan">Scan Watchlist</button>
+      <button class="btn btn-secondary" onclick="ptUpdate()" id="btn-pt-update">Update Prices</button>
+      <button class="btn btn-secondary" onclick="ptNewsGuard()" id="btn-pt-news">Check News</button>
+      <button class="btn btn-danger" onclick="ptReset()" style="margin-left:auto">Reset Portfolio</button>
+    </div>
+    <div id="pt-scan-status" class="operation-status" style="display:none"></div>
+    <div class="section-label">Open Positions (<span id="pt-open-badge">0</span>)</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th>Ticker</th><th>Strategy</th><th>Conviction</th><th>Sector</th>
+          <th>Entry</th><th>Current</th><th>Trail Stop</th><th>Target</th>
+          <th>Unrealized P&amp;L</th><th>Days</th><th></th>
+        </tr></thead>
+        <tbody id="pt-open-tbody"></tbody>
+      </table>
+    </div>
+    <div class="section-label">Closed Trades (<span id="pt-closed-badge">0</span>)</div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th>Ticker</th><th>Strategy</th><th>Conviction</th><th>Sector</th>
+          <th>Entry</th><th>Exit</th><th>Realized P&amp;L</th><th>Days</th><th>Reason</th>
+        </tr></thead>
+        <tbody id="pt-closed-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Trade Journal Panel -->
+<div id="panel-trade-journal" class="panel">
+  <div class="panel-header">
+    <h2 class="panel-title">Trade Journal</h2>
+  </div>
+  <div id="tj-content">
+    <div class="stat-cards" id="tj-stats"></div>
+    <div class="filter-bar">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="open">Open</button>
+      <button class="filter-btn" data-filter="closed">Closed</button>
+      <button class="filter-btn" data-filter="wins">Wins</button>
+      <button class="filter-btn" data-filter="losses">Losses</button>
+    </div>
+    <div id="tj-list"></div>
+  </div>
+</div>
+
+</div><!-- .app -->
+
+<!-- Toast container -->
+<div id="toast-container" class="toast-container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/motion@11.18/dist/motion.js"></script>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

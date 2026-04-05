@@ -1,8 +1,8 @@
 /**
  * components.js — All render functions, skeleton builders, and toast system.
  *
- * Internal helpers (not exported): escHtml, changeClass, formatPct, formatTimestamp
- * Exported helpers: tag, tickerTag
+ * Internal helpers (not exported): changeClass, formatPct, formatTimestamp
+ * Exported helpers: escHtml, tag, tickerTag
  * Exported skeletons: skeletonCards, skeletonRows, skeletonText
  * Exported toast: showToast
  * Exported render functions: renderEventDetail, renderReport, renderArticle,
@@ -13,7 +13,7 @@
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-function escHtml(str) {
+export function escHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
