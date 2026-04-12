@@ -6,15 +6,62 @@ All analysis runs locally — no data leaves your machine. The LLM (via Ollama) 
 
 ## Features
 
-**Market Overview** — Real-time market snapshot (indices, sectors, movers, yields, forex, crypto) with AI-generated briefing and regime classification.
+### Market Overview
+> Real-time market snapshot with AI-generated briefing and regime classification
 
-**Price Action Analysis** — Multi-timeframe confluence scoring engine with 12 layers calibrated against academic research. Swing detection, market structure (HH/HL/LH/LL, BOS/CHoCH), support/resistance, candlestick patterns, volume, momentum, and more. The LLM explains the score — it doesn't decide it.
+- Indices, sectors, movers, yields, forex, crypto — all in one view
+- LLM-powered narrative that reads the macro picture and classifies the current regime
+- Sector ETF performance across 11 sectors
 
-**Fundamental Analysis** — Standalone 7-silo analysis: valuation, profitability, growth, financial health, earnings quality, ownership, and dividends. Independent from price action scoring.
+---
 
-**Paper Trading** — Automated system that scans a watchlist using the same scoring engine, opens long/short positions, manages support-based stops with structural trailing exits, and tracks full trade lifecycle with analysis snapshots.
+### Price Action Analysis
+> 12-layer confluence scoring engine calibrated against academic research
 
-**Strategy Backtesting** — Walk-forward analysis with regime stratification, transaction costs, equity curves, and layer ablation across 9 strategies and configurable date ranges.
+- Multi-timeframe: weekly trend + daily structure
+- Market structure detection — HH/HL/LH/LL, BOS/CHoCH with invalidation logic
+- Support/resistance from swing clusters + moving averages
+- Candlestick patterns, volume analysis, RSI divergence, gap detection
+- Momentum, insider activity, institutional holdings, revenue acceleration
+- **The LLM explains the score — it doesn't decide it**
+
+---
+
+### Fundamental Analysis
+> Standalone 7-silo analysis, independent from price action scoring
+
+| Silo | What it covers |
+|------|---------------|
+| Valuation | P/E, PEG, P/S, P/B, EV/EBITDA, analyst targets |
+| Profitability | Margins, ROE, ROA, quarterly trends |
+| Growth | Revenue/EPS YoY, acceleration/deceleration |
+| Financial Health | D/E, current ratio, FCF, net cash/debt |
+| Earnings Quality | Beat rate, surprise %, consistency |
+| Ownership | Insider buys/sells, institutional holders |
+| Dividend | Yield, payout ratio, FCF coverage |
+
+---
+
+### Paper Trading
+> Automated long/short system with structural stop management
+
+- Scans a dynamic watchlist using the same 12-layer scoring engine
+- Support-based stops (long) / resistance-based stops (short), ATR fallback
+- Structural trailing stops — broken resistance becomes new support
+- Continuous position sizing proportional to score
+- Earnings proximity gate blocks trades within 5 days of earnings
+- Full trade lifecycle with analysis snapshots and event logs
+
+---
+
+### Strategy Backtesting
+> Walk-forward analysis across 9 strategies with regime stratification
+
+- 9 strategies: confluence score, mean reversion, liquidity sweep, demand zone, Wyckoff, and more
+- Walk-forward efficiency with rolling in-sample / out-of-sample windows
+- Regime-stratified metrics: bull/bear x high/low volatility
+- Transaction costs, equity curves, Sharpe/Sortino/Calmar ratios
+- Layer ablation — measure each layer's marginal contribution
 
 ## Prerequisites
 
