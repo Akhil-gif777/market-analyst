@@ -368,6 +368,28 @@ export function renderStockAnalysis(data) {
     <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
   </div>`;
 
+  // ── Trade Setup (entry, stop, exit) ──
+  const ts = data.trade_setup;
+  if (ts && ts.viable !== false) {
+    const dirColor = ts.direction === 'short' ? '#ef4444' : '#22c55e';
+    const dirLabel = ts.direction === 'short' ? 'SELL / SHORT' : 'BUY / LONG';
+    const stopLabel = ts.stop_type === 'support' ? 'Support' : ts.stop_type === 'resistance' ? 'Resistance' : 'ATR';
+
+    html += `<div class="market-section" style="margin-top:12px;padding:14px 16px;border-left:3px solid ${dirColor}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim)">Trade Setup</span>
+        <span style="font-size:13px;font-weight:700;color:${dirColor};padding:2px 10px;border:1px solid ${dirColor};border-radius:4px">${dirLabel}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;font-size:13px">
+        <div><div style="font-size:10px;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px">Entry</div><strong>$${ts.entry.toFixed(2)}</strong></div>
+        <div><div style="font-size:10px;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px">Stop Loss <span style="font-size:9px">[${stopLabel}]</span></div><strong style="color:#ef4444">$${ts.stop.toFixed(2)}</strong></div>
+        <div><div style="font-size:10px;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px">Exit</div><strong style="color:var(--text-dim)">Trailing stop</strong></div>
+        <div><div style="font-size:10px;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px">Risk/Share</div><strong>$${ts.risk_per_share.toFixed(2)}</strong></div>
+        ${ts.atr ? `<div><div style="font-size:10px;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px">ATR (14)</div><strong>$${ts.atr.toFixed(2)}</strong></div>` : ''}
+      </div>
+    </div>`;
+  }
+
   // ── Strategy Signals (right after score bar) ──
   const stratSigsEarly = data.strategy_signals || {};
   const stratKeysEarly = Object.keys(stratSigsEarly);
@@ -614,9 +636,10 @@ export function renderStockAnalysis(data) {
  * @param {Object} data - API response from /stock/:ticker/price-action
  * @param {Array} stockCharts - Mutable array; created charts are pushed here
  */
-export function renderStockCharts(data, stockCharts) {
+export function renderStockCharts(data, stockCharts = null) {
   const cd = data.chart_data;
   if (!cd) return;
+  if (!stockCharts) stockCharts = [];
 
   // Updated chart colors:
   // bg: #0a0e17, text-dim: #64748b, grid: #1e293b, borders: #1e293b
@@ -736,6 +759,8 @@ export function renderStockCharts(data, stockCharts) {
 
     mChart.timeScale().fitContent();
   }
+
+  return stockCharts;
 }
 
 // ── renderBtResults ───────────────────────────────────────────────────────────
@@ -1194,9 +1219,13 @@ export function ptRenderTrades(trades) {
     openBody.innerHTML = `<tr><td colspan="11" class="pt-empty">No open positions &#8212; run a scan to find opportunities</td></tr>`;
   } else {
     // Updated inline colors: red=#ef4444, green=#22c55e
-    openBody.innerHTML = open.map(t => `
-      <tr>
-        <td><strong>${escHtml(t.ticker)}</strong></td>
+    openBody.innerHTML = open.map(t => {
+      const dir = t.direction || 'long';
+      const dirBadge = dir === 'short'
+        ? '<span style="font-size:10px;font-weight:700;color:#ef4444;background:rgba(239,68,68,0.15);padding:1px 5px;border-radius:3px;margin-left:4px">SHORT</span>'
+        : '<span style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.15);padding:1px 5px;border-radius:3px;margin-left:4px">LONG</span>';
+      return `<tr>
+        <td><strong>${escHtml(t.ticker)}</strong>${dirBadge}</td>
         <td>${escHtml(stratName(t.strategy))}</td>
         <td><span class="pt-badge ${t.conviction}">${t.conviction}</span></td>
         <td style="font-size:11px;color:var(--text-dim)">${escHtml(t.sector)}</td>
@@ -1207,16 +1236,21 @@ export function ptRenderTrades(trades) {
         <td>${fmtPnl(t.unrealized_pnl, t.unrealized_pnl_pct)}</td>
         <td>${t.days_held || 0}d</td>
         <td><button class="pt-close-btn" onclick="ptCloseTrade(${t.id}, '${escHtml(t.ticker)}')">Close</button></td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   }
 
   const closedBody = document.getElementById('pt-closed-tbody');
   if (!closed.length) {
     closedBody.innerHTML = `<tr><td colspan="9" class="pt-empty">No closed trades yet</td></tr>`;
   } else {
-    closedBody.innerHTML = closed.map(t => `
-      <tr>
-        <td><strong>${escHtml(t.ticker)}</strong></td>
+    closedBody.innerHTML = closed.map(t => {
+      const dir = t.direction || 'long';
+      const dirBadge = dir === 'short'
+        ? '<span style="font-size:10px;font-weight:700;color:#ef4444;background:rgba(239,68,68,0.15);padding:1px 5px;border-radius:3px;margin-left:4px">SHORT</span>'
+        : '<span style="font-size:10px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.15);padding:1px 5px;border-radius:3px;margin-left:4px">LONG</span>';
+      return `<tr>
+        <td><strong>${escHtml(t.ticker)}</strong>${dirBadge}</td>
         <td>${escHtml(stratName(t.strategy))}</td>
         <td><span class="pt-badge ${t.conviction}">${t.conviction}</span></td>
         <td style="font-size:11px;color:var(--text-dim)">${escHtml(t.sector)}</td>
@@ -1225,7 +1259,8 @@ export function ptRenderTrades(trades) {
         <td>${fmtPnl(t.realized_pnl, t.realized_pnl_pct)}</td>
         <td>${t.days_held || 0}d</td>
         <td style="font-size:12px">${reasonLabel(t.exit_reason)}</td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   }
 }
 
@@ -1428,4 +1463,243 @@ export function tjRenderDetail(t) {
 
   html += '</div></div>';
   return html;
+}
+
+
+// ── renderFundamentals ──────────────────────────────────────────────────────
+
+function _fmtMetric(val, suffix = '') {
+  if (val === null || val === undefined || val === '') return '<span style="color:var(--text-dim)">N/A</span>';
+  if (typeof val === 'number') return val.toFixed(val % 1 === 0 ? 0 : 1) + suffix;
+  return escHtml(String(val));
+}
+
+function _ratingBadge(rating) {
+  if (!rating) return '';
+  const cls = {
+    'strong': 'positive', 'healthy': 'positive', 'attractive': 'positive', 'reasonable': 'positive',
+    'high growth': 'positive', 'growing': 'positive', 'excellent': 'positive', 'reliable': 'positive',
+    'bullish': 'positive', 'positive': 'positive', 'sustainable': 'positive',
+    'weak': 'negative', 'expensive': 'negative', 'concerning': 'negative', 'declining': 'negative',
+    'unreliable': 'negative', 'at risk': 'negative',
+  }[rating.toLowerCase()] || '';
+  return `<span class="badge ${cls}">${escHtml(rating.toUpperCase())}</span>`;
+}
+
+function _siloCard(title, silo) {
+  if (!silo) return '';
+  let html = `<div class="fundamental-card">`;
+  html += `<div class="fundamental-card-header"><h4>${escHtml(title)}</h4>${_ratingBadge(silo.rating)}</div>`;
+
+  // Reasons
+  if (silo.reasons && silo.reasons.length) {
+    html += '<ul class="fundamental-reasons">';
+    for (const r of silo.reasons) html += `<li>${escHtml(r)}</li>`;
+    html += '</ul>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+export function renderFundamentals(data) {
+  if (!data) return '<div class="empty"><p>No data</p></div>';
+
+  let html = '';
+
+  // Header
+  const price = data.current_price ? '$' + Number(data.current_price).toFixed(2) : '';
+  const changePct = data.quote?.change_percent || '';
+  const chgCls = changeClass(changePct);
+  html += `<div class="stock-header">
+    <div class="stock-title">
+      <h3>${escHtml(data.ticker || '')} — ${escHtml(data.name || '')}</h3>
+      <span class="stock-meta">${escHtml(data.sector || '')} · ${escHtml(data.industry || '')}</span>
+    </div>
+    <div class="stock-price-group">
+      <span class="stock-price">${price}</span>
+      <span class="stock-change ${chgCls}">${formatPct(changePct)}</span>
+    </div>
+  </div>`;
+
+  // Overall score badge
+  const overallScore = data.overall_score || 0;
+  const overallCls = overallScore >= 5 ? 'positive' : overallScore >= 0 ? '' : 'negative';
+  html += `<div style="margin:12px 0 16px;display:flex;align-items:center;gap:8px">
+    <span style="font-size:13px;color:var(--text-dim)">Fundamental Score</span>
+    <span class="badge ${overallCls}" style="font-size:14px;padding:4px 12px">${overallScore >= 0 ? '+' : ''}${overallScore}</span>
+  </div>`;
+
+  // Silo cards in 2-column grid
+  html += '<div class="fundamental-grid">';
+  html += _siloCard('Valuation', data.valuation);
+  html += _siloCard('Profitability', data.profitability);
+  html += _siloCard('Growth', data.growth);
+  html += _siloCard('Financial Health', data.financial_health);
+  html += _siloCard('Earnings Quality', data.earnings_quality);
+  html += _siloCard('Ownership', data.ownership);
+  html += _siloCard('Dividend', data.dividend);
+  html += '</div>';
+
+  // Key metrics table
+  html += '<div class="fundamental-metrics">';
+  html += '<h4 style="margin:16px 0 8px">Key Metrics</h4>';
+  html += '<div class="metrics-grid">';
+
+  // Valuation metrics
+  const v = data.valuation?.metrics || {};
+  html += _metricRow('P/E', v.pe_ratio, 'x');
+  html += _metricRow('Forward P/E', v.forward_pe, 'x');
+  html += _metricRow('PEG', v.peg_ratio, '');
+  html += _metricRow('P/B', v.price_to_book, 'x');
+  html += _metricRow('P/S', v.price_to_sales, 'x');
+  html += _metricRow('EV/EBITDA', v.ev_to_ebitda, 'x');
+  html += _metricRow('Market Cap', v.market_cap_fmt, '');
+
+  // Profitability
+  const p = data.profitability?.metrics || {};
+  html += _metricRow('Gross Margin', p.gross_margin, '%');
+  html += _metricRow('Operating Margin', p.operating_margin, '%');
+  html += _metricRow('Net Margin', p.net_margin, '%');
+  html += _metricRow('ROE', p.roe, '%');
+  html += _metricRow('ROA', p.roa, '%');
+
+  // Growth
+  const g = data.growth?.metrics || {};
+  html += _metricRow('Revenue YoY', g.revenue_yoy, '%');
+  html += _metricRow('EPS YoY', g.eps_yoy, '%');
+  html += _metricRow('Revenue (Annual)', g.revenue_current, '');
+
+  // Financial Health
+  const h = data.financial_health?.metrics || {};
+  html += _metricRow('Debt/Equity', h.debt_to_equity, '');
+  html += _metricRow('Current Ratio', h.current_ratio, '');
+  html += _metricRow('Interest Coverage', h.interest_coverage, 'x');
+  html += _metricRow('Free Cash Flow', h.free_cash_flow_fmt, '');
+  html += _metricRow('Net Position', h.net_position, '');
+
+  // Earnings
+  const eq = data.earnings_quality?.metrics || {};
+  html += _metricRow('Beat Rate', eq.beat_rate, '%');
+  html += _metricRow('Avg Surprise', eq.avg_surprise_pct, '%');
+
+  // Dividend
+  const dv = data.dividend?.metrics || {};
+  html += _metricRow('Div Yield', dv.yield, '%');
+  html += _metricRow('Payout Ratio', dv.payout_ratio, '%');
+
+  html += '</div></div>';
+
+  // Analyst ratings
+  if (v.analyst_ratings) {
+    html += '<div style="margin-top:16px"><h4>Analyst Ratings</h4><div class="analyst-bar">';
+    const total = v.analyst_ratings_total || 1;
+    for (const [label, count] of Object.entries(v.analyst_ratings)) {
+      const pct = Math.round(count / total * 100);
+      const cls = label.includes('Buy') ? 'buy' : label.includes('Sell') ? 'sell' : 'hold';
+      html += `<div class="analyst-segment analyst-${cls}" style="width:${Math.max(pct, 5)}%" title="${label}: ${count}">${count}</div>`;
+    }
+    html += '</div>';
+    if (v.target_upside_pct !== undefined) {
+      const upCls = v.target_upside_pct >= 0 ? 'positive' : 'negative';
+      html += `<div style="font-size:12px;margin-top:4px;color:var(--text-dim)">
+        Analyst target: $${v.analyst_target?.toFixed(2) || '?'}
+        <span class="${upCls}">(${v.target_upside_pct >= 0 ? '+' : ''}${v.target_upside_pct}%)</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Earnings history
+  if (eq.history && eq.history.length) {
+    html += '<div style="margin-top:16px"><h4>Earnings History</h4>';
+    html += '<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Reported</th><th>Estimate</th><th>Surprise</th><th>Result</th></tr></thead><tbody>';
+    for (const e of eq.history.slice(0, 8)) {
+      const resCls = e.result === 'beat' ? 'positive' : e.result === 'miss' ? 'negative' : '';
+      const surStr = e.surprise_pct !== null && e.surprise_pct !== undefined ? (e.surprise_pct >= 0 ? '+' : '') + e.surprise_pct.toFixed(1) + '%' : 'N/A';
+      html += `<tr>
+        <td>${escHtml(e.date || '')}</td>
+        <td>${e.reported_eps !== null ? '$' + e.reported_eps.toFixed(2) : 'N/A'}</td>
+        <td>${e.estimated_eps !== null ? '$' + e.estimated_eps.toFixed(2) : 'N/A'}</td>
+        <td class="${resCls}">${surStr}</td>
+        <td><span class="badge ${resCls}">${escHtml((e.result || '').toUpperCase())}</span></td>
+      </tr>`;
+    }
+    html += '</tbody></table></div></div>';
+  }
+
+  // Margin trend
+  if (p.margin_trend && p.margin_trend.length) {
+    html += '<div style="margin-top:16px"><h4>Margin Trend (Quarterly)</h4>';
+    html += '<div class="table-wrap"><table class="data-table"><thead><tr><th>Period</th><th>Gross</th><th>Operating</th><th>Net</th></tr></thead><tbody>';
+    for (const m of p.margin_trend) {
+      html += `<tr>
+        <td>${escHtml(m.period || '')}</td>
+        <td>${m.gross_margin !== undefined ? m.gross_margin.toFixed(1) + '%' : 'N/A'}</td>
+        <td>${m.operating_margin !== undefined ? m.operating_margin.toFixed(1) + '%' : 'N/A'}</td>
+        <td>${m.net_margin !== undefined ? m.net_margin.toFixed(1) + '%' : 'N/A'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div></div>';
+  }
+
+  // LLM Narrative
+  const n = data.narrative;
+  if (n) {
+    html += '<div class="market-overview-box" style="margin-top:20px">';
+    html += '<h4>Fundamental Analysis</h4>';
+    if (n.summary) html += `<p>${escHtml(n.summary)}</p>`;
+
+    if (n.strengths && n.strengths.length) {
+      html += '<h5 style="margin-top:10px;color:var(--green)">Strengths</h5><ul>';
+      for (const s of n.strengths) {
+        const text = typeof s === 'string' ? s : (s.name || s.metric || Object.values(s).join(' — '));
+        html += `<li>${escHtml(String(text))}</li>`;
+      }
+      html += '</ul>';
+    }
+
+    if (n.concerns && n.concerns.length) {
+      html += '<h5 style="margin-top:10px;color:var(--red)">Concerns</h5><ul>';
+      for (const c of n.concerns) {
+        const text = typeof c === 'string' ? c : (c.name || c.metric || Object.values(c).join(' — '));
+        html += `<li>${escHtml(String(text))}</li>`;
+      }
+      html += '</ul>';
+    }
+
+    const takes = [
+      ['Valuation', n.valuation_take],
+      ['Profitability', n.profitability_take],
+      ['Growth', n.growth_take],
+      ['Financial Health', n.health_take],
+      ['Earnings', n.earnings_take],
+      ['Ownership', n.ownership_take],
+      ['Dividend', n.dividend_take],
+    ];
+    for (const [label, take] of takes) {
+      if (take && take !== 'N/A') {
+        html += `<div style="margin-top:8px"><strong>${label}:</strong> ${escHtml(take)}</div>`;
+      }
+    }
+    html += '</div>';
+  }
+
+  // Duration
+  if (data.duration_seconds) {
+    html += `<div style="margin-top:12px;font-size:11px;color:var(--text-dim)">Analyzed in ${data.duration_seconds}s</div>`;
+  }
+
+  return html;
+}
+
+function _metricRow(label, value, suffix) {
+  if (value === null || value === undefined || value === '' || value === 'None') return '';
+  let display;
+  if (typeof value === 'number') {
+    display = value.toFixed(Math.abs(value) < 10 ? 2 : 1) + suffix;
+  } else {
+    display = escHtml(String(value)) + suffix;
+  }
+  return `<div class="metric-item"><span class="metric-label">${escHtml(label)}</span><span class="metric-value">${display}</span></div>`;
 }

@@ -669,7 +669,38 @@ header {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ==========================================================================
-   Section 25 — Responsive Breakpoints
+   Section 25 — Fundamental Analysis
+   ========================================================================== */
+.fundamental-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.fundamental-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.fundamental-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.fundamental-card-header h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.fundamental-reasons { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text-secondary); }
+.fundamental-reasons li { margin-bottom: 3px; }
+
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 16px; }
+.metric-item { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.metric-label { color: var(--text-dim); }
+.metric-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.analyst-bar { display: flex; border-radius: 6px; overflow: hidden; height: 24px; margin-top: 6px; }
+.analyst-segment { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; }
+.analyst-buy { background: var(--green); }
+.analyst-hold { background: #888; }
+.analyst-sell { background: var(--red); }
+
+/* ==========================================================================
+   Section 26 — Responsive Breakpoints
    ========================================================================== */
 @media (max-width: 1024px) {
   .app { padding: 20px; }
@@ -679,6 +710,7 @@ header {
   .app { padding: 12px; }
   .tab { padding: 10px 14px; font-size: 13px; }
   .market-grid { grid-template-columns: 1fr; }
+  .fundamental-grid { grid-template-columns: 1fr; }
   .stat-cards { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .data-table th, .data-table td { padding: 8px 6px; font-size: 12px; }
   .tj-detail-grid { grid-template-columns: 1fr; }

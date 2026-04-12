@@ -110,15 +110,17 @@
 <!-- Stock Analysis Panel -->
 <div id="panel-stock-analysis" class="panel">
   <div class="panel-header">
-    <h2 class="panel-title">Stock Price Action Analysis</h2>
+    <h2 class="panel-title">Stock Analysis</h2>
   </div>
   <div class="stock-search-bar">
     <input type="text" id="stock-ticker-input" placeholder="Enter ticker (e.g. AAPL)"
            class="input input-ticker" onkeydown="if(event.key==='Enter') runStockAnalysis()">
-    <button onclick="runStockAnalysis()" id="btn-stock-analyze" class="btn btn-primary">Analyze</button>
+    <button onclick="runStockAnalysis()" id="btn-stock-analyze" class="btn btn-primary">Price Action</button>
+    <button onclick="runFundamentals()" id="btn-stock-fundamentals" class="btn btn-secondary">Fundamentals</button>
   </div>
-  <p class="panel-desc">Multi-timeframe price action analysis with confluence scoring. Uses 6 Alpha Vantage calls + 1 LLM call.</p>
+  <p class="panel-desc">Price Action: multi-timeframe confluence scoring + LLM narrative. Fundamentals: 7-silo analysis (valuation, profitability, growth, health, earnings, ownership, dividend).</p>
   <div id="stock-analysis-content"></div>
+  <div id="stock-fundamentals-content"></div>
 </div>
 
 <!-- Full Analysis Panel -->
@@ -210,7 +212,6 @@
       <button class="btn btn-secondary" onclick="ptLoad()">Load Portfolio</button>
       <button class="btn btn-primary" onclick="ptScan()" id="btn-pt-scan">Scan Watchlist</button>
       <button class="btn btn-secondary" onclick="ptUpdate()" id="btn-pt-update">Update Prices</button>
-      <button class="btn btn-secondary" onclick="ptNewsGuard()" id="btn-pt-news">Check News</button>
       <button class="btn btn-danger" onclick="ptReset()" style="margin-left:auto">Reset Portfolio</button>
     </div>
     <div id="pt-scan-status" class="operation-status" style="display:none"></div>
@@ -235,6 +236,12 @@
         <tbody id="pt-closed-tbody"></tbody>
       </table>
     </div>
+    <div class="section-label" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between">
+      <span>Scan History</span>
+      <button class="btn btn-secondary" onclick="shLoad()" style="font-size:11px;padding:4px 10px">Refresh</button>
+    </div>
+    <div id="sh-list"><p style="color:var(--text-dim);font-size:13px;padding:12px 0">Loading scan history...</p></div>
+    <div id="sh-detail" style="display:none"></div>
   </div>
 </div>
 

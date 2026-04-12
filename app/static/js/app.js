@@ -12,6 +12,7 @@ import {
   renderMarketData, renderMarketOverview,
   ptRenderPortfolio, ptRenderTrades,
   tjRenderStats, tjRenderList, tjRenderDetail,
+  renderFundamentals,
   escHtml, tag, tickerTag
 } from './components.js';
 
@@ -55,7 +56,7 @@ function showPanel(name) {
 
   // Auto-load data for certain panels
   if (name === 'trade-journal') tjLoad();
-  if (name === 'paper-trading') ptLoad();
+  if (name === 'paper-trading') { ptLoad(); shLoad(); }
 }
 
 function initTabs() {
@@ -465,9 +466,11 @@ async function runStockAnalysis() {
   if (!ticker) return;
 
   const container = document.getElementById('stock-analysis-content');
+  const funContainer = document.getElementById('stock-fundamentals-content');
   const btn = document.getElementById('btn-stock-analyze');
   btn.disabled = true;
   _destroyStockCharts();
+  funContainer.innerHTML = '';
   container.innerHTML = skeletonCards(4);
   showProgressBar();
 
@@ -487,6 +490,31 @@ async function runStockAnalysis() {
     }
   } catch (e) {
     container.innerHTML = `<div class="empty"><p>Analysis failed: ${escHtml(e.message)}</p></div>`;
+  } finally {
+    btn.disabled = false;
+    hideProgressBar();
+  }
+}
+
+async function runFundamentals() {
+  const input = document.getElementById('stock-ticker-input');
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) return;
+
+  const container = document.getElementById('stock-fundamentals-content');
+  const paContainer = document.getElementById('stock-analysis-content');
+  const btn = document.getElementById('btn-stock-fundamentals');
+  btn.disabled = true;
+  paContainer.innerHTML = '';
+  _destroyStockCharts();
+  container.innerHTML = skeletonCards(4);
+  showProgressBar();
+
+  try {
+    const data = await api('GET', `/stock/${ticker}/fundamentals`);
+    container.innerHTML = renderFundamentals(data);
+  } catch (e) {
+    container.innerHTML = `<div class="empty"><p>Fundamental analysis failed: ${escHtml(e.message)}</p></div>`;
   } finally {
     btn.disabled = false;
     hideProgressBar();
@@ -708,14 +736,71 @@ async function ptScan() {
   try {
     const r = await api('POST', '/paper/scan');
     clearInterval(timer);
-    status.textContent = `Scan complete: ${r.scanned} analyzed, ${r.signals} signals, ${r.opened} trades opened, ${r.skipped} skipped.`;
+
+    // Summary line
+    let html = `<div style="margin-bottom:12px;font-weight:600">Scan complete: ${r.watchlist_size || r.scanned} tickers in watchlist, ${r.scanned} analyzed, ${r.signals} signals, ${r.opened} opened, ${r.skipped} skipped.</div>`;
+
+    // Detailed results per ticker
+    const details = r.details || [];
+    if (details.length) {
+      html += '<div style="display:flex;flex-direction:column;gap:6px">';
+      for (const d of details) {
+        const action = d.action || '';
+        let color = 'var(--text-dim)';
+        let icon = '';
+        if (action.startsWith('OPENED')) { color = '#3fb950'; icon = '+'; }
+        else if (action.startsWith('BLOCKED')) { color = '#d29922'; icon = '!'; }
+        else if (action.startsWith('REJECTED')) { color = '#f85149'; icon = 'x'; }
+        else if (action.startsWith('NO SIGNAL')) { color = 'var(--text-dim)'; icon = '-'; }
+        else if (action.startsWith('SKIPPED')) { color = 'var(--text-dim)'; icon = '~'; }
+        else if (action.startsWith('ERROR')) { color = '#f85149'; icon = '!'; }
+
+        const score = d.score != null ? `score: ${d.score}` : '';
+        const thresh = d.threshold != null ? ` (need ${d.threshold})` : '';
+        const price = d.price ? ` @ $${Number(d.price).toFixed(2)}` : '';
+
+        html += `<div style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;border-left:3px solid ${color}">`;
+        const vol = d.volatility;
+        const volBadge = vol === 'high' ? '<span style="font-size:10px;font-weight:600;color:#ef4444;background:rgba(239,68,68,0.15);padding:1px 5px;border-radius:3px;margin-left:2px">HIGH VOL</span>'
+          : vol === 'medium' ? '<span style="font-size:10px;font-weight:600;color:#eab308;background:rgba(234,179,8,0.15);padding:1px 5px;border-radius:3px;margin-left:2px">MED VOL</span>'
+          : '';
+
+        html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">`;
+        html += `<strong style="min-width:50px">${escHtml(d.ticker || '?')}</strong>`;
+        html += volBadge;
+        html += `<span style="font-size:12px;color:var(--text-dim)">${escHtml(d.sector || '')}</span>`;
+        if (score) html += `<span style="font-size:12px">${score}${thresh}</span>`;
+        if (price) html += `<span style="font-size:12px">${price}</span>`;
+        html += `<span style="font-size:12px;color:${color};margin-left:auto;font-weight:600">${escHtml(action)}</span>`;
+        html += `</div>`;
+
+        // Show top layers if available
+        const layers = d.layers || [];
+        if (layers.length) {
+          html += `<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">`;
+          for (const l of layers) {
+            const lc = l.score > 0 ? '#3fb950' : l.score < 0 ? '#f85149' : 'var(--text-dim)';
+            html += `<span style="font-size:11px;color:${lc}">${escHtml(l.name)}: ${l.score > 0 ? '+' : ''}${l.score}</span>`;
+          }
+          html += '</div>';
+        }
+
+        if (d.earnings_warning) {
+          html += `<div style="font-size:11px;color:#d29922;margin-top:4px">${escHtml(d.earnings_warning)}</div>`;
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    status.innerHTML = html;
     await ptLoad();
   } catch (e) {
     clearInterval(timer);
     status.textContent = 'Scan failed: ' + e.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = '\u25b6 Scan Watchlist';
+    btn.textContent = 'Scan Watchlist';
     hideProgressBar();
   }
 }
@@ -842,6 +927,119 @@ async function tjToggle(tradeId) {
   }
 }
 
+// ── Scan History ─────────────────────────────────────────────────────────────
+
+async function shLoad() {
+  const list = document.getElementById('sh-list');
+  const detail = document.getElementById('sh-detail');
+  detail.style.display = 'none';
+  list.style.display = '';
+
+  try {
+    const res = await api('GET', '/paper/scans?limit=30');
+    const scans = res.scans || [];
+    if (!scans.length) {
+      list.innerHTML = '<div class="empty"><p>No scans yet — run "Scan Watchlist" on the Paper Trading tab.</p></div>';
+      return;
+    }
+
+    let html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    for (const s of scans) {
+      const date = s.created_at ? new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleString() : '';
+      const openedColor = s.opened > 0 ? '#22c55e' : 'var(--text-dim)';
+      const signalColor = s.signals > 0 ? '#eab308' : 'var(--text-dim)';
+      html += `<div onclick="shViewScan(${s.id})" style="padding:12px 16px;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <span style="font-weight:600">Scan #${s.id}</span>
+            <span style="font-size:12px;color:var(--text-dim);margin-left:8px">${date}</span>
+          </div>
+          <div style="display:flex;gap:16px;font-size:13px">
+            <span>${s.watchlist_size || s.scanned} tickers</span>
+            <span style="color:${signalColor}">${s.signals} signals</span>
+            <span style="color:${openedColor}">${s.opened} opened</span>
+            <span style="color:var(--text-dim)">${s.skipped} skipped</span>
+          </div>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+    list.innerHTML = html;
+  } catch (e) {
+    list.innerHTML = `<div class="empty"><p>Failed to load scan history</p></div>`;
+  }
+}
+
+async function shViewScan(scanId) {
+  const list = document.getElementById('sh-list');
+  const detail = document.getElementById('sh-detail');
+  list.style.display = 'none';
+  detail.style.display = '';
+  detail.innerHTML = '<div class="empty"><p>Loading scan details...</p></div>';
+
+  try {
+    const data = await api('GET', `/paper/scans/${scanId}`);
+    const date = data.created_at ? new Date(data.created_at.replace(' ', 'T') + 'Z').toLocaleString() : '';
+    const details = data.details || [];
+
+    let html = `<div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="shLoad()" style="font-size:12px">Back to list</button>
+      <span style="font-weight:600;font-size:15px">Scan #${data.id}</span>
+      <span style="font-size:12px;color:var(--text-dim)">${date}</span>
+      <span style="font-size:12px">${data.scanned} analyzed, ${data.signals} signals, ${data.opened} opened</span>
+    </div>`;
+
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for (const d of details) {
+      const action = d.action || '';
+      let borderColor = 'var(--border)';
+      if (action.includes('OPENED')) borderColor = '#22c55e';
+      else if (action.includes('BLOCKED')) borderColor = '#eab308';
+      else if (action.includes('REJECTED')) borderColor = '#ef4444';
+
+      const score = d.score != null ? `score: ${d.score}` : '';
+      const thresh = d.threshold != null ? ` (need ${d.threshold})` : '';
+      const price = d.price ? ` @ $${Number(d.price).toFixed(2)}` : '';
+      const dir = d.direction ? ` [${d.direction.toUpperCase()}]` : '';
+
+      html += `<div style="padding:10px 14px;border:1px solid var(--border);border-radius:6px;border-left:3px solid ${borderColor}">`;
+      const vol = d.volatility;
+      const volBadge = vol === 'high' ? '<span style="font-size:10px;font-weight:600;color:#ef4444;background:rgba(239,68,68,0.15);padding:1px 5px;border-radius:3px;margin-left:2px">HIGH VOL</span>'
+        : vol === 'medium' ? '<span style="font-size:10px;font-weight:600;color:#eab308;background:rgba(234,179,8,0.15);padding:1px 5px;border-radius:3px;margin-left:2px">MED VOL</span>'
+        : '';
+
+      html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">`;
+      html += `<strong style="min-width:55px">${escHtml(d.ticker || '?')}</strong>`;
+      html += volBadge;
+      html += `<span style="font-size:12px;color:var(--text-dim)">${escHtml(d.sector || '')}</span>`;
+      if (score) html += `<span style="font-size:12px">${score}${thresh}</span>`;
+      if (price) html += `<span style="font-size:12px">${price}</span>`;
+      html += `<span style="font-size:12px;color:${borderColor};margin-left:auto;font-weight:600">${escHtml(action)}${dir}</span>`;
+      html += `</div>`;
+
+      // Layer scores
+      const layers = d.layers || [];
+      if (layers.length) {
+        html += `<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">`;
+        for (const l of layers) {
+          const lc = l.score > 0 ? '#22c55e' : l.score < 0 ? '#ef4444' : 'var(--text-dim)';
+          html += `<span style="font-size:11px;color:${lc}">${escHtml(l.name)}: ${l.score > 0 ? '+' : ''}${l.score}</span>`;
+        }
+        html += '</div>';
+      }
+
+      if (d.earnings_warning) {
+        html += `<div style="font-size:11px;color:#eab308;margin-top:4px">${escHtml(d.earnings_warning)}</div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    detail.innerHTML = html;
+  } catch (e) {
+    detail.innerHTML = `<div class="empty"><p>Failed to load scan #${scanId}</p></div>`;
+  }
+}
+
 // ── Window Attachments ────────────────────────────────────────────────────────
 // Every function referenced by onclick in the HTML must be on window.
 
@@ -857,6 +1055,7 @@ Object.assign(window, {
   loadSectors,
   loadNews,
   runStockAnalysis,
+  runFundamentals,
   switchChartTab,
   runFullAnalysis,
   runBacktest,
@@ -874,6 +1073,8 @@ Object.assign(window, {
   tjToggle,
   toggleEventGroup,
   goBack,
+  shLoad,
+  shViewScan,
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
