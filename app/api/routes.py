@@ -6,16 +6,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Path as PathParam
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, field_validator
 
 from app.analysis.pipeline import run_full_analysis, scan_news, analyze_event_by_id, generate_market_overview, analyze_stock_price_action, analyze_stock_fundamentals
 from app.db import database as db
@@ -81,6 +82,19 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def csrf_guard(request: Request, call_next):
+    """Block cross-origin form POSTs by requiring Content-Type: application/json on mutations."""
+    if request.method == "POST":
+        ct = request.headers.get("content-type", "")
+        if "application/json" not in ct:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "POST requests must include Content-Type: application/json"},
+            )
+    return await call_next(request)
 
 
 @app.get("/", include_in_schema=False)
@@ -237,9 +251,22 @@ def analyze_market():
     return result
 
 
+_TICKER_RE = re.compile(r"^[A-Za-z0-9.\-]{1,10}$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _validate_ticker(ticker: str) -> str:
+    """Validate and normalize a ticker symbol."""
+    ticker = ticker.strip().upper()
+    if not _TICKER_RE.match(ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker format: {ticker!r}")
+    return ticker
+
+
 @app.get("/stock/{ticker}/price-action")
 def get_stock_price_action(ticker: str):
     """Run price action analysis on a single stock — multi-timeframe confluence scoring + LLM narrative."""
+    ticker = _validate_ticker(ticker)
     result = analyze_stock_price_action(ticker)
     if result.get("error") and not result.get("score"):
         raise HTTPException(status_code=400, detail=result["error"])
@@ -249,6 +276,7 @@ def get_stock_price_action(ticker: str):
 @app.get("/stock/{ticker}/fundamentals")
 def get_stock_fundamentals(ticker: str):
     """Run standalone fundamental analysis — 7 silos (valuation, profitability, growth, health, earnings, ownership, dividend) + LLM narrative."""
+    ticker = _validate_ticker(ticker)
     result = analyze_stock_fundamentals(ticker)
     if result.get("error") and not result.get("valuation"):
         raise HTTPException(status_code=400, detail=result["error"])
@@ -262,6 +290,23 @@ class BacktestRequest(BaseModel):
     horizons: List[int] = [5, 10, 20]
     strategies: Optional[List[str]] = None
     warmup: int = 252
+
+    @field_validator("tickers")
+    @classmethod
+    def validate_tickers(cls, v):
+        if len(v) > 30:
+            raise ValueError("Maximum 30 tickers allowed")
+        for t in v:
+            if not _TICKER_RE.match(t.strip()):
+                raise ValueError(f"Invalid ticker format: {t!r}")
+        return [t.strip().upper() for t in v]
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_dates(cls, v):
+        if not _DATE_RE.match(v):
+            raise ValueError(f"Date must be YYYY-MM-DD format, got: {v!r}")
+        return v
 
 
 @app.post("/backtest")
@@ -293,7 +338,7 @@ async def run_backtest_endpoint(req: BacktestRequest):
         )
     except Exception as e:
         logger.exception("Backtest failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Backtest failed — check server logs for details")
 
     elapsed = time.time() - t_start
 
@@ -358,7 +403,7 @@ async def paper_scan():
         return result
     except Exception as e:
         logger.exception("Paper scan failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Paper scan failed — check server logs for details")
 
 
 @app.post("/paper/update")
@@ -370,7 +415,7 @@ async def paper_update():
         return result
     except Exception as e:
         logger.exception("Paper update failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Paper update failed — check server logs for details")
 
 
 @app.post("/paper/trades/{trade_id}/close")
@@ -399,7 +444,7 @@ async def paper_news_guard():
         return result
     except Exception as e:
         logger.exception("News guard failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="News guard failed — check server logs for details")
 
 
 @app.get("/paper/feedback")

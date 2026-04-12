@@ -37,7 +37,7 @@ class Config:
     db_path: str = "data/market_analyst.db"
 
     # API Server
-    api_host: str = "0.0.0.0"
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
 
     @classmethod
@@ -51,7 +51,7 @@ class Config:
             analysis_max_news_articles=int(os.getenv("MAX_NEWS_ARTICLES", "50")),
             analysis_max_stocks_per_sector=int(os.getenv("MAX_STOCKS_PER_SECTOR", "5")),
             db_path=os.getenv("DB_PATH", "data/market_analyst.db"),
-            api_host=os.getenv("API_HOST", "0.0.0.0"),
+            api_host=os.getenv("API_HOST", "127.0.0.1"),
             api_port=int(os.getenv("API_PORT", "8000")),
         )
 

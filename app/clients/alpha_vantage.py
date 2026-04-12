@@ -26,7 +26,10 @@ def _request(params: Dict[str, Any]) -> Dict[str, Any]:
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as e:
-        logger.error("Alpha Vantage request failed: %s", e)
+        err_msg = str(e)
+        if config.alpha_vantage_api_key:
+            err_msg = err_msg.replace(config.alpha_vantage_api_key, "***")
+        logger.error("Alpha Vantage request failed: %s", err_msg)
         return {}
 
     if "Error Message" in data:

@@ -67,6 +67,9 @@ All config via environment variables or `.env` file (see `.env.example`):
 - `OLLAMA_TIMEOUT` — default `1800` (30 min, these models are slow locally)
 - `DB_PATH` — default `data/market_analyst.db`
 
+- `API_HOST` — default `127.0.0.1` (localhost only; set to `0.0.0.0` for network access)
+- `API_PORT` — default `8000`
+
 Config is loaded as a singleton in `app/config.py` via `Config.from_env()`.
 
 ## Project Structure
@@ -99,6 +102,7 @@ app/
                       # technicals (RSI/MACD), commodities, economic indicators,
                       # sector ETFs, market movers, treasury yields, forex,
                       # insider transactions, institutional holdings, earnings
+                      # API key sanitized from error logs to prevent leakage
     ollama.py         # Ollama client + ALL prompt templates:
                       # EVENT_EXTRACTION, CAUSAL_ANALYSIS, STOCK_SELECTION,
                       # SYNTHESIS, MARKET_OVERVIEW, PRICE_ACTION_NARRATIVE,
@@ -106,6 +110,9 @@ app/
                       # Also: JSON extraction with fallback parsing (fences, brace matching)
   api/
     routes.py         # FastAPI routes — all endpoints
+                      # CSRF middleware requires Content-Type: application/json on POSTs
+                      # Ticker validation via _validate_ticker() (regex ^[A-Za-z0-9.\-]{1,10}$)
+                      # BacktestRequest validates ticker format, date format, max 30 tickers
     server.py         # Uvicorn entry point
   cli/
     main.py           # Rich CLI with scan/deep/analyze/report/events/chain/sectors
@@ -120,6 +127,8 @@ app/
                       # inputs to Stock Analysis tab), opens long/short trades
     executor.py       # Support-based stops, trailing stops, continuous position sizing,
                       # portfolio risk budget (15% max), slippage, long+short support
+                      # _trade_lock (threading.Lock) guards open_trade/close_trade against
+                      # concurrent access from background poller, API, and scanner
     pre_trade.py      # News sentiment gate + earnings proximity check (blocks within 5 days)
     portfolio.py      # Portfolio summary (P&L, win rate, risk metrics)
     news_guard.py     # Defensive: closes positions when high-severity events hit sectors
@@ -149,7 +158,7 @@ validation/
                       # regime tagging, layer ablation, transaction costs,
                       # Sharpe/Sortino/Calmar ratios, max drawdown
   indicators.py       # Local RSI/MACD/ATR computation (no API calls)
-  data_loader.py      # yfinance downloader with CSV caching
+  data_loader.py      # yfinance downloader with CSV caching (ticker/date sanitized, path traversal guard)
   data/               # Cached OHLCV CSVs (gitignored via validation/results/)
 
 research/             # Academic evidence documents
@@ -313,7 +322,9 @@ Fundamental analysis is **completely standalone** — not connected to price act
 
 ### FastAPI Async Pattern
 
-Long-running operations (paper scan, backtest) use `asyncio.to_thread()` to avoid blocking the event loop. The paper scan takes 5-10 minutes for the full watchlist (~10 AV calls per ticker). A background price poller runs every 5 minutes during market hours via FastAPI lifespan.
+Long-running operations (paper scan, backtest) use `asyncio.to_thread()` to avoid blocking the event loop. The paper scan takes 5-10 minutes for the full watchlist (~10 AV calls per ticker). A background price poller runs every 5 minutes during market hours via FastAPI lifespan. A `threading.Lock` (`_trade_lock` in `executor.py`) guards `open_trade()` and `close_trade()` against concurrent access from the poller, scanner, and API endpoints.
+
+**Security middleware**: A CSRF guard middleware rejects POST requests without `Content-Type: application/json`, preventing cross-origin form submissions. Error responses use generic messages (full traces logged server-side only). Server binds to `127.0.0.1` by default.
 
 ### Price Data Conventions
 
@@ -445,3 +456,7 @@ These are the hot paths — know them so you don't have to re-discover them:
 - Sector performance uses ETF proxies (XLK, XLV, XLF, etc.) because the AV SECTOR endpoint is deprecated
 - SQLite uses per-thread connections via `threading.local()` — do NOT use a singleton connection (causes malloc crashes on macOS with asyncio.to_thread)
 - Scanner uses `compact=False` for daily prices — `compact=True` only returns 100 bars, not enough for MA200
+- Server binds to `127.0.0.1` by default — set `API_HOST=0.0.0.0` to expose on the network (no authentication layer exists)
+- Ticker inputs are validated via regex (`^[A-Za-z0-9.\-]{1,10}$`) in routes and data_loader to prevent path traversal
+- Error responses to clients use generic messages — never expose `str(e)` which may leak file paths or API keys
+- `executor.py` uses `_trade_lock` to prevent TOCTOU races between the background poller, scanner, and manual API calls

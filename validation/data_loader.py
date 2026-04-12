@@ -10,6 +10,7 @@ yfinance is used instead of Alpha Vantage because:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -19,6 +20,9 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path("validation/data")
+
+_SAFE_TICKER = re.compile(r"^[A-Za-z0-9.\-]{1,10}$")
+_SAFE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def download_ticker(
@@ -33,9 +37,18 @@ def download_ticker(
     Returns DataFrame with columns: Date, Open, High, Low, Close, Volume
     sorted ascending by date.
     """
+    if not _SAFE_TICKER.match(ticker):
+        raise ValueError(f"Invalid ticker format: {ticker!r}")
+    if not _SAFE_DATE.match(start) or not _SAFE_DATE.match(end):
+        raise ValueError(f"Invalid date format: start={start!r}, end={end!r}")
+
     cache_dir = cache_dir or CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_path = cache_dir / f"{ticker}_{start}_{end}.csv"
+
+    # Verify resolved path stays under cache_dir
+    if not cache_path.resolve().is_relative_to(cache_dir.resolve()):
+        raise ValueError(f"Invalid cache path for ticker {ticker!r}")
 
     if cache_path.exists():
         logger.info("Loading cached data for %s", ticker)

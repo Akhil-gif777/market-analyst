@@ -11,6 +11,18 @@
  *   tjRenderList, tjRenderDetail
  */
 
+// ── Chart scroll fix ─────────────────────────────────────────────────────────
+// Lightweight Charts captures wheel/trackpad events and calls preventDefault(),
+// blocking page scrolling. This document-level capture-phase listener fires
+// BEFORE the chart's own listeners and stops the event from reaching them.
+// Since we don't call preventDefault(), the browser scrolls the page normally.
+// Chart interactivity (crosshair, hover, click-drag pan) is unaffected.
+document.addEventListener('wheel', function(e) {
+  if (e.target.closest && e.target.closest('.tv-lightweight-charts')) {
+    e.stopPropagation();
+  }
+}, true);
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 export function escHtml(str) {
@@ -649,6 +661,8 @@ export function renderStockCharts(data, stockCharts = null) {
     timeScale: { borderColor: '#1e293b' },
     rightPriceScale: { borderColor: '#1e293b' },
     crosshair: { mode: 0 },
+    handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+    handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: true },
   };
 
   // Updated candle colors: green=#22c55e, red=#ef4444

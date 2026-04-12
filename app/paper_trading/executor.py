@@ -15,6 +15,7 @@ Improvements over original:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
@@ -23,6 +24,12 @@ from app.db import database as db
 from app.clients.alpha_vantage import get_stock_quote
 
 logger = logging.getLogger(__name__)
+
+# ── Concurrency ───────────────────────────────────────────────────────────────
+
+# Guards check-then-act sequences (cash checks, trade status checks) against
+# concurrent access from the background poller, API endpoints, and scanner.
+_trade_lock = threading.Lock()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -120,94 +127,95 @@ def open_trade(
     """
     is_short = direction == "short"
 
-    # Ensure portfolio exists
-    portfolio = db.get_paper_portfolio()
-    if not portfolio:
-        db.init_paper_portfolio()
+    with _trade_lock:
+        # Ensure portfolio exists
         portfolio = db.get_paper_portfolio()
+        if not portfolio:
+            db.init_paper_portfolio()
+            portfolio = db.get_paper_portfolio()
 
-    # Check global position limit
-    open_trades = db.get_paper_trades(status="open")
-    if len(open_trades) >= MAX_POSITIONS:
-        logger.info("[EXECUTOR] Max positions (%d) reached -- skipping %s", MAX_POSITIONS, ticker)
-        return None
+        # Check global position limit
+        open_trades = db.get_paper_trades(status="open")
+        if len(open_trades) >= MAX_POSITIONS:
+            logger.info("[EXECUTOR] Max positions (%d) reached -- skipping %s", MAX_POSITIONS, ticker)
+            return None
 
-    # Check sector position limit
-    sector_count = sum(1 for t in open_trades if t["sector"] == sector)
-    if sector_count >= MAX_SECTOR_POSITIONS:
-        logger.info("[EXECUTOR] Max sector positions (%d) for %s reached -- skipping %s",
-                    MAX_SECTOR_POSITIONS, sector, ticker)
-        return None
+        # Check sector position limit
+        sector_count = sum(1 for t in open_trades if t["sector"] == sector)
+        if sector_count >= MAX_SECTOR_POSITIONS:
+            logger.info("[EXECUTOR] Max sector positions (%d) for %s reached -- skipping %s",
+                        MAX_SECTOR_POSITIONS, sector, ticker)
+            return None
 
-    # Continuous position sizing: proportional to score
-    score_ratio = conviction_score / max_score if max_score > 0 else 0
-    position_pct = MIN_POSITION_PCT + score_ratio * (MAX_POSITION_PCT - MIN_POSITION_PCT)
-    position_pct = max(MIN_POSITION_PCT, min(MAX_POSITION_PCT, position_pct))
-    position_value = round(STARTING_CAPITAL * position_pct, 2)
+        # Continuous position sizing: proportional to score
+        score_ratio = conviction_score / max_score if max_score > 0 else 0
+        position_pct = MIN_POSITION_PCT + score_ratio * (MAX_POSITION_PCT - MIN_POSITION_PCT)
+        position_pct = max(MIN_POSITION_PCT, min(MAX_POSITION_PCT, position_pct))
+        position_value = round(STARTING_CAPITAL * position_pct, 2)
 
-    # Check sufficient cash
-    if portfolio["current_cash"] < position_value:
-        logger.info("[EXECUTOR] Insufficient cash ($%.2f) for %s position ($%.2f)",
-                    portfolio["current_cash"], ticker, position_value)
-        return None
+        # Check sufficient cash
+        if portfolio["current_cash"] < position_value:
+            logger.info("[EXECUTOR] Insufficient cash ($%.2f) for %s position ($%.2f)",
+                        portfolio["current_cash"], ticker, position_value)
+            return None
 
-    # Apply slippage
-    if is_short:
-        # Short entry: sell at slightly less than signal (slippage works against you)
-        entry_price = round(signal_price * (1 - SLIPPAGE), 4)
-    else:
-        # Long entry: buy at slightly more than signal (slippage works against you)
-        entry_price = round(signal_price * (1 + SLIPPAGE), 4)
-    shares = round(position_value / entry_price, 6)
-    actual_position_value = round(entry_price * shares, 2)
+        # Apply slippage
+        if is_short:
+            # Short entry: sell at slightly less than signal (slippage works against you)
+            entry_price = round(signal_price * (1 - SLIPPAGE), 4)
+        else:
+            # Long entry: buy at slightly more than signal (slippage works against you)
+            entry_price = round(signal_price * (1 + SLIPPAGE), 4)
+        shares = round(position_value / entry_price, 6)
+        actual_position_value = round(entry_price * shares, 2)
 
-    # Structural stop loss: nearest support (long) or resistance (short)
-    stop_loss_price, stop_type = find_structural_stop(entry_price, levels, atr, direction)
-    if is_short:
-        stop_distance = stop_loss_price - entry_price
-    else:
-        stop_distance = entry_price - stop_loss_price
+        # Structural stop loss: nearest support (long) or resistance (short)
+        stop_loss_price, stop_type = find_structural_stop(entry_price, levels, atr, direction)
+        if is_short:
+            stop_distance = stop_loss_price - entry_price
+        else:
+            stop_distance = entry_price - stop_loss_price
 
-    # No hard take profit target — trailing stop manages all exits.
-    # Score says buy → we buy. Support breaks → we sell.
-    take_profit_type = "trailing"
-    if is_short:
-        take_profit_price = 0.0001  # sentinel — trailing stop handles exit
-    else:
-        take_profit_price = round(entry_price * 10, 4)  # sentinel — trailing stop handles exit
+        # No hard take profit target — trailing stop manages all exits.
+        # Score says buy → we buy. Support breaks → we sell.
+        take_profit_type = "trailing"
+        if is_short:
+            take_profit_price = 0.0001  # sentinel — trailing stop handles exit
+        else:
+            take_profit_price = round(entry_price * 10, 4)  # sentinel — trailing stop handles exit
 
-    # Serialize analysis snapshot as JSON
-    import json
-    snapshot_json = json.dumps(analysis_snapshot) if analysis_snapshot else None
+        # Serialize analysis snapshot as JSON
+        import json
+        snapshot_json = json.dumps(analysis_snapshot) if analysis_snapshot else None
 
-    # Derive conviction label for display (informational only -- sizing uses score directly)
-    conviction_label = "high" if score_ratio >= 0.37 else "medium" if score_ratio >= 0.26 else "low"
+        # Derive conviction label for display (informational only -- sizing uses score directly)
+        conviction_label = "high" if score_ratio >= 0.37 else "medium" if score_ratio >= 0.26 else "low"
 
-    # Open the trade in DB
-    trade_id = db.open_paper_trade(
-        ticker=ticker,
-        sector=sector,
-        strategy=strategy,
-        direction=direction,
-        conviction=conviction_label,
-        conviction_score=conviction_score,
-        sentiment_score=sentiment_score,
-        signal_price=signal_price,
-        entry_price=entry_price,
-        shares=shares,
-        position_value=actual_position_value,
-        stop_loss_price=stop_loss_price,
-        trailing_stop_price=stop_loss_price,  # starts same as initial stop
-        atr=atr if atr > 0 else None,
-        take_profit_price=take_profit_price,
-        take_profit_type=take_profit_type,
-        analysis_snapshot=snapshot_json,
-    )
+        # Open the trade in DB
+        trade_id = db.open_paper_trade(
+            ticker=ticker,
+            sector=sector,
+            strategy=strategy,
+            direction=direction,
+            conviction=conviction_label,
+            conviction_score=conviction_score,
+            sentiment_score=sentiment_score,
+            signal_price=signal_price,
+            entry_price=entry_price,
+            shares=shares,
+            position_value=actual_position_value,
+            stop_loss_price=stop_loss_price,
+            trailing_stop_price=stop_loss_price,  # starts same as initial stop
+            atr=atr if atr > 0 else None,
+            take_profit_price=take_profit_price,
+            take_profit_type=take_profit_type,
+            analysis_snapshot=snapshot_json,
+        )
 
-    # Deduct cash
-    db.deduct_cash(actual_position_value)
+        # Deduct cash
+        db.deduct_cash(actual_position_value)
 
-    # Log the open event
+    # Log the open event (outside lock — no state mutation)
     dir_label = "SHORT" if is_short else "LONG"
     atr_str = f", ATR=${atr:.2f}" if atr > 0 else ""
     db.log_trade_event(
@@ -236,59 +244,60 @@ def close_trade(trade_id: int, current_price: float, reason: str) -> Dict[str, A
     For longs: sell at slightly less (slippage).
     For shorts: buy back at slightly more (slippage).
     """
-    trade = db.get_paper_trade(trade_id)
-    if not trade:
-        raise ValueError(f"Trade {trade_id} not found")
-    if trade["status"] != "open":
-        raise ValueError(f"Trade {trade_id} is already closed")
+    with _trade_lock:
+        trade = db.get_paper_trade(trade_id)
+        if not trade:
+            raise ValueError(f"Trade {trade_id} not found")
+        if trade["status"] != "open":
+            raise ValueError(f"Trade {trade_id} is already closed")
 
-    direction = trade.get("direction", "long")
-    is_short = direction == "short"
-    shares = trade["shares"]
-    entry_price = trade["entry_price"]
+        direction = trade.get("direction", "long")
+        is_short = direction == "short"
+        shares = trade["shares"]
+        entry_price = trade["entry_price"]
 
-    # Apply exit slippage
-    if is_short:
-        # Short exit: buy back at slightly more (slippage works against you)
-        exit_price = round(current_price * (1 + SLIPPAGE), 4)
-    else:
-        # Long exit: sell at slightly less (slippage works against you)
-        exit_price = round(current_price * (1 - SLIPPAGE), 4)
+        # Apply exit slippage
+        if is_short:
+            # Short exit: buy back at slightly more (slippage works against you)
+            exit_price = round(current_price * (1 + SLIPPAGE), 4)
+        else:
+            # Long exit: sell at slightly less (slippage works against you)
+            exit_price = round(current_price * (1 - SLIPPAGE), 4)
 
-    # Compute realized P&L
-    if is_short:
-        realized_pnl = round((entry_price - exit_price) * shares, 2)
-        realized_pnl_pct = round((entry_price - exit_price) / entry_price * 100, 2)
-    else:
-        realized_pnl = round((exit_price - entry_price) * shares, 2)
-        realized_pnl_pct = round((exit_price - entry_price) / entry_price * 100, 2)
+        # Compute realized P&L
+        if is_short:
+            realized_pnl = round((entry_price - exit_price) * shares, 2)
+            realized_pnl_pct = round((entry_price - exit_price) / entry_price * 100, 2)
+        else:
+            realized_pnl = round((exit_price - entry_price) * shares, 2)
+            realized_pnl_pct = round((exit_price - entry_price) / entry_price * 100, 2)
 
-    # Compute days held
-    created_at_str = trade.get("created_at", "")
-    try:
-        created_dt = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-        now_dt = datetime.now(timezone.utc)
-        days_held = (now_dt - created_dt).days
-    except Exception:
-        days_held = trade.get("days_held", 0)
+        # Compute days held
+        created_at_str = trade.get("created_at", "")
+        try:
+            created_dt = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+            now_dt = datetime.now(timezone.utc)
+            days_held = (now_dt - created_dt).days
+        except Exception:
+            days_held = trade.get("days_held", 0)
 
-    # Update trade in DB
-    db.close_paper_trade(
-        trade_id=trade_id,
-        exit_price=exit_price,
-        exit_reason=reason,
-        realized_pnl=realized_pnl,
-        realized_pnl_pct=realized_pnl_pct,
-        days_held=days_held,
-    )
+        # Update trade in DB
+        db.close_paper_trade(
+            trade_id=trade_id,
+            exit_price=exit_price,
+            exit_reason=reason,
+            realized_pnl=realized_pnl,
+            realized_pnl_pct=realized_pnl_pct,
+            days_held=days_held,
+        )
 
-    # Return cash (position value + P&L)
-    # For both long and short: we reserved position_value at open.
-    # Now we get back position_value + realized_pnl.
-    proceeds = round(trade["position_value"] + realized_pnl, 2)
-    db.return_cash(proceeds)
+        # Return cash (position value + P&L)
+        # For both long and short: we reserved position_value at open.
+        # Now we get back position_value + realized_pnl.
+        proceeds = round(trade["position_value"] + realized_pnl, 2)
+        db.return_cash(proceeds)
 
-    # Log close event
+    # Log close event (outside lock — no state mutation)
     dir_label = "SHORT" if is_short else "LONG"
     pnl_sign = "+" if realized_pnl >= 0 else ""
     db.log_trade_event(
