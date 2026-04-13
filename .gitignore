@@ -5,5 +5,4 @@ __pycache__/
 *.pyc
 validation/results/
 .DS_Store
-.claude/settings.local.json
-.claude/projects/
+.claude/
