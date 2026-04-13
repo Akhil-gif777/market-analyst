@@ -5,4 +5,4 @@ __pycache__/
 *.pyc
 validation/results/
 .DS_Store
-.claude/
+.claude/**
