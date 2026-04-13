@@ -6,3 +6,4 @@ __pycache__/
 validation/results/
 .DS_Store
 .claude/**
+CLAUDE.md
