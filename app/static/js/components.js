@@ -1606,21 +1606,23 @@ export function renderFundamentals(data) {
 
   // Analyst ratings
   if (v.analyst_ratings) {
-    html += '<div style="margin-top:16px"><h4>Analyst Ratings</h4><div class="analyst-bar">';
+    html += '<div style="margin-top:16px"><h4>Analyst Ratings</h4>';
+    html += '<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Aggregated from major Wall Street brokerages via Alpha Vantage. Includes ratings from Goldman Sachs, Morgan Stanley, JP Morgan, Bank of America, Citi, and others. Updated as analysts publish new coverage.</div>';
+    html += '<div class="analyst-bar">';
     const total = v.analyst_ratings_total || 1;
     for (const [label, count] of Object.entries(v.analyst_ratings)) {
       const pct = Math.round(count / total * 100);
       const cls = label.includes('Buy') ? 'buy' : label.includes('Sell') ? 'sell' : 'hold';
-      html += `<div class="analyst-segment analyst-${cls}" style="width:${Math.max(pct, 5)}%" title="${label}: ${count}">${count}</div>`;
+      html += `<div class="analyst-segment analyst-${cls}" style="width:${Math.max(pct, 5)}%" title="${label}: ${count} analysts">${count}</div>`;
     }
     html += '</div>';
+    html += `<div style="font-size:11px;margin-top:4px;color:var(--text-dim);display:flex;justify-content:space-between">`;
+    html += `<span>${total} analysts covering this stock</span>`;
     if (v.target_upside_pct !== undefined) {
       const upCls = v.target_upside_pct >= 0 ? 'positive' : 'negative';
-      html += `<div style="font-size:12px;margin-top:4px;color:var(--text-dim)">
-        Analyst target: $${v.analyst_target?.toFixed(2) || '?'}
-        <span class="${upCls}">(${v.target_upside_pct >= 0 ? '+' : ''}${v.target_upside_pct}%)</span>
-      </div>`;
+      html += `<span>Consensus target: $${v.analyst_target?.toFixed(2) || '?'} <span class="${upCls}">(${v.target_upside_pct >= 0 ? '+' : ''}${v.target_upside_pct}%)</span></span>`;
     }
+    html += '</div>';
     html += '</div>';
   }
 
@@ -1707,6 +1709,33 @@ export function renderFundamentals(data) {
   return html;
 }
 
+const _METRIC_DEFS = {
+  'P/E': 'Price-to-Earnings ratio. Stock price divided by earnings per share. Lower = cheaper relative to earnings. S&P 500 avg ~20-25x.',
+  'Forward P/E': 'P/E using next year\'s estimated earnings. Lower than trailing P/E means analysts expect earnings growth.',
+  'PEG': 'P/E divided by earnings growth rate. PEG < 1 suggests the stock is undervalued relative to its growth. PEG > 2 is expensive.',
+  'P/B': 'Price-to-Book ratio. Stock price divided by book value (assets minus liabilities) per share. Below 1 means trading below asset value.',
+  'P/S': 'Price-to-Sales ratio. Market cap divided by annual revenue. Useful for unprofitable companies. Lower = cheaper.',
+  'EV/EBITDA': 'Enterprise Value divided by EBITDA (earnings before interest, taxes, depreciation, amortization). Accounts for debt. Below 10 is generally cheap.',
+  'Market Cap': 'Total market value of all outstanding shares. Large cap > $10B, Mid cap $2-10B, Small cap < $2B.',
+  'Gross Margin': 'Revenue minus cost of goods sold, as a percentage of revenue. Higher = better pricing power and lower production costs.',
+  'Operating Margin': 'Operating income as a percentage of revenue. Shows profitability from core business operations after operating expenses.',
+  'Net Margin': 'Net income as a percentage of revenue. The bottom line — what percentage of every dollar in revenue becomes profit.',
+  'ROE': 'Return on Equity. Net income divided by shareholder equity. How efficiently the company generates profit from shareholders\' investment. Above 15% is strong.',
+  'ROA': 'Return on Assets. Net income divided by total assets. How efficiently the company uses all its assets to generate profit.',
+  'Revenue YoY': 'Year-over-year revenue growth. Compares the most recent annual revenue to the prior year.',
+  'EPS YoY': 'Year-over-year earnings per share growth. Compares the most recent annual EPS to the prior year.',
+  'Revenue (Annual)': 'Total revenue for the most recent fiscal year.',
+  'Debt/Equity': 'Total debt divided by shareholder equity. Below 1 means more equity than debt. Above 2 is heavily leveraged.',
+  'Current Ratio': 'Current assets divided by current liabilities. Above 1 means the company can cover short-term obligations. Below 1 is a liquidity risk.',
+  'Interest Coverage': 'Operating income divided by interest expense. How easily the company can pay interest on debt. Above 5x is comfortable.',
+  'Free Cash Flow': 'Operating cash flow minus capital expenditures. The cash a company generates after maintaining its assets. Positive FCF = self-funding.',
+  'Net Position': 'Cash minus total debt. "Net cash" means more cash than debt. "Net debt" means more debt than cash.',
+  'Beat Rate': 'Percentage of recent quarters where reported EPS exceeded analyst estimates. 75%+ is reliable.',
+  'Avg Surprise': 'Average earnings surprise percentage. Positive means the company consistently beats estimates.',
+  'Div Yield': 'Annual dividend per share divided by stock price. The income return from holding the stock.',
+  'Payout Ratio': 'Dividends paid as a percentage of earnings. Below 60% is sustainable. Above 90% may be at risk of cuts.',
+};
+
 function _metricRow(label, value, suffix) {
   if (value === null || value === undefined || value === '' || value === 'None') return '';
   let display;
@@ -1715,5 +1744,7 @@ function _metricRow(label, value, suffix) {
   } else {
     display = escHtml(String(value)) + suffix;
   }
-  return `<div class="metric-item"><span class="metric-label">${escHtml(label)}</span><span class="metric-value">${display}</span></div>`;
+  const def = _METRIC_DEFS[label];
+  const infoBtn = def ? `<span class="metric-info" data-tip="${escHtml(def)}">?</span>` : '';
+  return `<div class="metric-item"><span class="metric-label">${escHtml(label)}${infoBtn}</span><span class="metric-value">${display}</span></div>`;
 }
