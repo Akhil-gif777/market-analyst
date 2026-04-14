@@ -94,7 +94,11 @@ async def csrf_guard(request: Request, call_next):
                 status_code=403,
                 content={"detail": "POST requests must include Content-Type: application/json"},
             )
-    return await call_next(request)
+    response = await call_next(request)
+    # Prevent browser caching of JS/CSS for dev — ensures code changes take effect on reload
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
 
 
 @app.get("/", include_in_schema=False)
@@ -264,13 +268,23 @@ def _validate_ticker(ticker: str) -> str:
 
 
 @app.get("/stock/{ticker}/price-action")
-def get_stock_price_action(ticker: str):
-    """Run price action analysis on a single stock — multi-timeframe confluence scoring + LLM narrative."""
+async def get_stock_price_action(ticker: str):
+    """Run price action analysis — fast, no LLM. Narrative loaded separately."""
     ticker = _validate_ticker(ticker)
-    result = analyze_stock_price_action(ticker)
+    result = await asyncio.to_thread(analyze_stock_price_action, ticker, True)
     if result.get("error") and not result.get("score"):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@app.get("/stock/{ticker}/narrative")
+async def get_stock_narrative(ticker: str):
+    """Generate LLM narrative for a stock — runs full pipeline with LLM (slow)."""
+    ticker = _validate_ticker(ticker)
+    result = await asyncio.to_thread(analyze_stock_price_action, ticker)
+    if result.get("error") and not result.get("narrative"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Narrative generation failed"))
+    return {"narrative": result.get("narrative")}
 
 
 @app.get("/stock/{ticker}/fundamentals")

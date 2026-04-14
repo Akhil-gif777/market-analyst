@@ -8,7 +8,7 @@ import {
 import {
   showToast, skeletonCards, skeletonRows, skeletonText,
   renderEventDetail, renderReport, renderArticle,
-  renderStockAnalysis, renderStockCharts, renderBtResults,
+  renderStockAnalysis, renderStockCharts, renderNarrative, renderBtResults,
   renderMarketData, renderMarketOverview,
   ptRenderPortfolio, ptRenderTrades,
   tjRenderStats, tjRenderList, tjRenderDetail,
@@ -488,11 +488,29 @@ async function runStockAnalysis() {
       const pct = parseFloat(pctStr) || 0;
       animateScoreBar(fillEl, pct);
     }
+
+    // Load LLM narrative in background — analysis is already rendered
+    _loadNarrative(ticker, container);
   } catch (e) {
     container.innerHTML = `<div class="empty"><p>Analysis failed: ${escHtml(e.message)}</p></div>`;
   } finally {
     btn.disabled = false;
     hideProgressBar();
+  }
+}
+
+async function _loadNarrative(ticker, container) {
+  try {
+    const resp = await fetch(`/stock/${ticker}/narrative`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const { narrative } = await resp.json();
+    if (container.querySelector('#narrative-container')) {
+      renderNarrative(narrative);
+    }
+  } catch (_) {
+    if (container.querySelector('#narrative-container')) {
+      renderNarrative(null);
+    }
   }
 }
 

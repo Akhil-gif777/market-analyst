@@ -45,6 +45,7 @@ from app.analysis.price_action import (
     analyze_volume,
     compute_confluence_score,
     compute_sma,
+    compute_ema,
 )
 
 console = Console()
@@ -177,8 +178,10 @@ def run_backtest(
                 macd_data = compute_macd(d_slice)
                 atr = compute_atr(d_slice, period=14)
 
+                ema_21_series = compute_ema(d_slice, 21)
                 sma_50_series = compute_sma(d_slice, 50)
                 sma_200_series = compute_sma(d_slice, 200)
+                ema_21 = ema_21_series[-1]["value"] if ema_21_series else None
                 ma_50 = sma_50_series[-1]["value"] if sma_50_series else None
                 ma_200 = sma_200_series[-1]["value"] if sma_200_series else None
 
@@ -189,7 +192,7 @@ def run_backtest(
 
                 current_price = d_slice[-1]["close"]
                 levels = find_support_resistance(
-                    daily_swings, weekly_swings, current_price, ma_50, ma_200
+                    daily_swings, weekly_swings, current_price, ma_50, ma_200, ema_21=ema_21
                 )
                 patterns = detect_candlestick_patterns(d_slice, levels)
                 volume = analyze_volume(d_slice)

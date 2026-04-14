@@ -388,6 +388,7 @@ def find_support_resistance(
     current_price: float,
     ma_50: Optional[float] = None,
     ma_200: Optional[float] = None,
+    ema_21: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """
     Find support and resistance levels from swing points and moving averages.
@@ -408,6 +409,9 @@ def find_support_resistance(
 
     if not all_points:
         # Still add MA levels if available
+        if ema_21 is not None:
+            level_type = "support" if current_price > ema_21 else "resistance"
+            levels.append({"price": round(ema_21, 2), "type": level_type, "strength": 1, "source": "ema_21", "timeframes": ["daily"]})
         if ma_50 is not None:
             level_type = "support" if current_price > ma_50 else "resistance"
             levels.append({"price": round(ma_50, 2), "type": level_type, "strength": 2, "source": "ma_50", "timeframes": ["daily"]})
@@ -472,6 +476,17 @@ def find_support_resistance(
             levels.append(fib)
 
     # Add MA levels
+    if ema_21 is not None:
+        level_type = "support" if current_price > ema_21 else "resistance"
+        levels.append({
+            "price": round(ema_21, 2),
+            "type": level_type,
+            "strength": 1,
+            "source": "ema_21",
+            "touches": 0,
+            "timeframes": ["daily"],
+        })
+
     if ma_50 is not None:
         level_type = "support" if current_price > ma_50 else "resistance"
         levels.append({
@@ -1426,14 +1441,21 @@ def _score_indicators(
 
 
 def _score_moving_averages(ma_signals: Optional[Dict[str, Any]]) -> Tuple[int, str]:
-    """Score MA signals — price position, alignment, crossovers (max ±2)."""
+    """Score MA signals — price position, alignment, crossovers (max ±2).
+
+    Weight budget (±2.0 total):
+      Price vs 200MA:    ±1.0  — institutional standard, strongest signal
+      Price vs 21 EMA:   ±0.5  — short-term momentum (responsive to selloffs)
+      50/200 alignment:  ±0.25 — confirms regime, somewhat redundant with crossover
+      Golden/death cross: ±0.25 — event signal, fades quickly
+    """
     if not ma_signals:
         return 0, "No MA data available"
 
     score: float = 0.0
     reasons: List[str] = []
 
-    # Price vs 200MA (±1) — primary signal
+    # Price vs 200MA (±1.0) — primary signal
     p200 = ma_signals.get("price_vs_200")
     ma200 = ma_signals.get("ma_200_value")
     if p200 == "above":
@@ -1443,21 +1465,31 @@ def _score_moving_averages(ma_signals: Optional[Dict[str, Any]]) -> Tuple[int, s
         score -= 1.0
         reasons.append(f"Price below 200MA (${ma200:.2f})" if ma200 else "Price below 200MA")
 
-    # 50MA vs 200MA alignment (±0.5)
+    # Price vs 21 EMA (±0.5) — short-term momentum
+    p21 = ma_signals.get("price_vs_21")
+    ema21 = ma_signals.get("ema_21_value")
+    if p21 == "above":
+        score += 0.5
+        reasons.append(f"Price above 21EMA (${ema21:.2f})" if ema21 else "Price above 21EMA")
+    elif p21 == "below":
+        score -= 0.5
+        reasons.append(f"Price below 21EMA (${ema21:.2f})" if ema21 else "Price below 21EMA")
+
+    # 50MA vs 200MA alignment (±0.25)
     alignment = ma_signals.get("ma_alignment", "neutral")
     if alignment == "bullish":
-        score += 0.5
+        score += 0.25
         reasons.append("50MA above 200MA — bullish alignment")
     elif alignment == "bearish":
-        score -= 0.5
+        score -= 0.25
         reasons.append("50MA below 200MA — bearish alignment")
 
-    # Recent crossover (±0.5)
+    # Recent crossover (±0.25)
     if ma_signals.get("golden_cross"):
-        score += 0.5
+        score += 0.25
         reasons.append("Recent golden cross (50MA crossed above 200MA)")
     elif ma_signals.get("death_cross"):
-        score -= 0.5
+        score -= 0.25
         reasons.append("Recent death cross (50MA crossed below 200MA)")
 
     final = max(-2, min(2, int(round(score))))
@@ -2047,32 +2079,57 @@ def compute_sma(prices: List[Dict[str, Any]], period: int) -> List[Dict[str, Any
     return result
 
 
+def compute_ema(prices: List[Dict[str, Any]], period: int) -> List[Dict[str, Any]]:
+    """Compute EMA from OHLCV data (prices sorted ascending). Seeded with SMA of first `period` bars."""
+    if len(prices) < period:
+        return []
+    # Seed: SMA of the first `period` bars
+    seed = sum(p["close"] for p in prices[:period]) / period
+    k = 2.0 / (period + 1)
+    result = [{"date": prices[period - 1]["date"], "value": round(seed, 2)}]
+    ema = seed
+    for i in range(period, len(prices)):
+        ema = prices[i]["close"] * k + ema * (1 - k)
+        result.append({"date": prices[i]["date"], "value": round(ema, 2)})
+    return result
+
+
 def compute_ma_signals(
     ma_50_series: List[Dict[str, Any]],
     ma_200_series: List[Dict[str, Any]],
     current_price: float,
+    ema_21_series: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
-    Derive MA-based trading signals from SMA series.
+    Derive MA-based trading signals from SMA/EMA series.
 
     Returns:
+        price_vs_21: "above" | "below" | None
         price_vs_50: "above" | "below" | None
         price_vs_200: "above" | "below" | None
         ma_alignment: "bullish" | "bearish" | "neutral"  (50MA vs 200MA)
         golden_cross: bool  — 50MA crossed above 200MA in last 20 bars
         death_cross: bool   — 50MA crossed below 200MA in last 20 bars
+        ema_21_value: float | None
         ma_50_value: float | None
         ma_200_value: float | None
     """
     result: Dict[str, Any] = {
+        "price_vs_21": None,
         "price_vs_50": None,
         "price_vs_200": None,
         "ma_alignment": "neutral",
         "golden_cross": False,
         "death_cross": False,
+        "ema_21_value": None,
         "ma_50_value": None,
         "ma_200_value": None,
     }
+
+    if ema_21_series:
+        val = ema_21_series[-1]["value"]
+        result["ema_21_value"] = val
+        result["price_vs_21"] = "above" if current_price > val else "below"
 
     if ma_50_series:
         val = ma_50_series[-1]["value"]

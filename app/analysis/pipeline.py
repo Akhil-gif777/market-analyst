@@ -160,7 +160,7 @@ def analyze_stock_fundamentals(ticker: str) -> Dict[str, Any]:
     }
 
 
-def analyze_stock_price_action(ticker: str) -> Dict[str, Any]:
+def analyze_stock_price_action(ticker: str, skip_narrative: bool = False) -> Dict[str, Any]:
     """
     Per-ticker price action analysis with multi-timeframe confluence scoring.
 
@@ -225,18 +225,22 @@ def analyze_stock_price_action(ticker: str) -> Dict[str, Any]:
     weekly_structure = pa.classify_market_structure(weekly_swings)
 
     # Moving averages — use full 452 bars for warmup so MA200 covers the display window
+    ema_21_series = pa.compute_ema(daily_asc, 21)
     ma_50_series = pa.compute_sma(daily_asc, 50)
     ma_200_series = pa.compute_sma(daily_asc, 200)
+    # Weekly 10-week SMA for chart overlay (visual only, not scored)
+    weekly_ma_10_series = pa.compute_sma(weekly_asc, 10)
+    ema_21_value = ema_21_series[-1]["value"] if ema_21_series else None
     ma_50_value = ma_50_series[-1]["value"] if ma_50_series else None
     ma_200_value = ma_200_series[-1]["value"] if ma_200_series else None
 
     # MA-based signals (position, alignment, crossovers)
-    ma_signals = pa.compute_ma_signals(ma_50_series, ma_200_series, current_price)
+    ma_signals = pa.compute_ma_signals(ma_50_series, ma_200_series, current_price, ema_21_series=ema_21_series)
 
     # Support & Resistance
     levels = pa.find_support_resistance(
         daily_swings, weekly_swings, current_price,
-        ma_50=ma_50_value, ma_200=ma_200_value,
+        ma_50=ma_50_value, ma_200=ma_200_value, ema_21=ema_21_value,
     )
 
     # Candlestick patterns — use display window
@@ -378,25 +382,28 @@ def analyze_stock_price_action(ticker: str) -> Dict[str, Any]:
         {k: v["signal"] for k, v in strategy_signals.items()},
     )
 
-    # ── Phase 4: LLM narrative ──
-    technical_text = _format_price_action_for_llm(
-        ticker, overview, quote, daily_structure, weekly_structure,
-        levels, patterns, volume, rsi_data, macd_data, current_price,
-        ma_50_value, ma_200_value,
-    )
-    score_text = _format_score_for_llm(score)
+    # ── Phase 4: LLM narrative (skipped when skip_narrative=True for fast response) ──
+    narrative = None
+    if not skip_narrative:
+        technical_text = _format_price_action_for_llm(
+            ticker, overview, quote, daily_structure, weekly_structure,
+            levels, patterns, volume, rsi_data, macd_data, current_price,
+            ma_50_value, ma_200_value,
+        )
+        score_text = _format_score_for_llm(score)
 
-    logger.info("[%s] Generating LLM narrative", ticker)
-    llm_result = ollama.narrate_price_action(technical_text, score_text)
-    narrative = llm_result.get("data")
-    if not narrative:
-        logger.warning("[%s] LLM narrative failed: %s", ticker, llm_result.get("error"))
+        logger.info("[%s] Generating LLM narrative", ticker)
+        llm_result = ollama.narrate_price_action(technical_text, score_text)
+        narrative = llm_result.get("data")
+        if not narrative:
+            logger.warning("[%s] LLM narrative failed: %s", ticker, llm_result.get("error"))
 
     # ── Phase 5: Build chart data for frontend ──
     chart_data = _build_chart_data(
         daily_display, weekly_asc, daily_swings, weekly_swings,
         daily_structure, weekly_structure, levels, patterns,
-        ma_50_series, ma_200_series, rsi_data, macd_data, current_price,
+        ema_21_series, ma_50_series, ma_200_series, weekly_ma_10_series,
+        rsi_data, macd_data, current_price,
     )
 
     return {
@@ -440,7 +447,7 @@ def analyze_stock_price_action(ticker: str) -> Dict[str, Any]:
         "chart_data": chart_data,
         "trade_setup": _compute_trade_setup(score, current_price, atr_value, levels),
         "duration_seconds": round(_time.time() - start, 1),
-        "error": llm_result.get("error") if not narrative else None,
+        "error": None,
     }
 
 
@@ -560,7 +567,8 @@ def _format_score_for_llm(score: Dict[str, Any]) -> str:
 def _build_chart_data(
     daily_asc, weekly_asc, daily_swings, weekly_swings,
     daily_structure, weekly_structure, levels, patterns,
-    ma_50_series, ma_200_series, rsi_data, macd_data, current_price,
+    ema_21_series, ma_50_series, ma_200_series, weekly_ma_10_series,
+    rsi_data, macd_data, current_price,
 ) -> Dict[str, Any]:
     """Build all data needed for Lightweight Charts rendering."""
     # Candle data format: {time: "YYYY-MM-DD", open, high, low, close}
@@ -635,8 +643,11 @@ def _build_chart_data(
 
     # MA series — trim to display window
     display_start = daily_asc[0]["date"] if daily_asc else ""
+    ema_21_chart = [{"time": m["date"], "value": m["value"]} for m in (ema_21_series or []) if m["date"] >= display_start]
     ma_50_chart = [{"time": m["date"], "value": m["value"]} for m in ma_50_series if m["date"] >= display_start]
     ma_200_chart = [{"time": m["date"], "value": m["value"]} for m in (ma_200_series or []) if m["date"] >= display_start]
+    # Weekly 10-week SMA — no trim needed, weekly_asc is already the display window
+    weekly_ma_10_chart = [{"time": m["date"], "value": m["value"]} for m in (weekly_ma_10_series or [])]
 
     # RSI series — AV returns newest-first; Lightweight Charts needs oldest-first
     rsi_series = [{"time": r["date"], "value": r["value"]} for r in reversed(rsi_data or [])]
@@ -660,8 +671,10 @@ def _build_chart_data(
         "support_lines": support_lines,
         "resistance_lines": resistance_lines,
         "fib_lines": fib_lines,
+        "ema_21": ema_21_chart,
         "ma_50": ma_50_chart,
         "ma_200": ma_200_chart,
+        "weekly_ma_10": weekly_ma_10_chart,
         "rsi": rsi_series,
         "macd": macd_series,
         "macd_signal": macd_signal_series,

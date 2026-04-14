@@ -113,19 +113,21 @@ def _analyze(ticker: str, sector: str = "Unknown") -> Dict[str, Any]:
     daily_structure = pa.classify_market_structure(daily_swings)
     weekly_structure = pa.classify_market_structure(weekly_swings)
 
+    ema_21_series = pa.compute_ema(daily_asc, 21)
     ma_50_series = pa.compute_sma(daily_asc, 50)
     ma_200_series = pa.compute_sma(daily_asc, 200)
+    ema_21_value = ema_21_series[-1]["value"] if ema_21_series else None
     ma_50_value = ma_50_series[-1]["value"] if ma_50_series else None
     ma_200_value = ma_200_series[-1]["value"] if ma_200_series else None
 
     levels = pa.find_support_resistance(
         daily_swings, weekly_swings, current_price,
-        ma_50=ma_50_value, ma_200=ma_200_value,
+        ma_50=ma_50_value, ma_200=ma_200_value, ema_21=ema_21_value,
     )
     patterns = pa.detect_candlestick_patterns(daily_asc, levels)
     volume = pa.analyze_volume(daily_asc)
     rsi_divergence = pa.detect_rsi_divergence(daily_swings, rsi_data)
-    ma_signals = pa.compute_ma_signals(ma_50_series, ma_200_series, current_price)
+    ma_signals = pa.compute_ma_signals(ma_50_series, ma_200_series, current_price, ema_21_series=ema_21_series)
     gaps = pa.detect_gaps(daily_asc, levels, atr_value) if atr_value > 0 else []
 
     # ── Phase 2.5: Sector relative strength + market regime ──

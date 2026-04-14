@@ -526,34 +526,14 @@ export function renderStockAnalysis(data) {
     html += '</div>';
   }
 
-  // ── LLM Narrative ──
-  const n = data.narrative;
-  if (n) {
-    html += '<div class="market-overview-box" style="margin-top:20px">';
-    if (n.headline) html += `<div class="one-liner">${escHtml(n.headline)}</div>`;
-
-    const sections = [
-      ['Market Structure', n.structure_analysis],
-      ['Pattern Context', n.pattern_context],
-      ['Key Levels', n.level_analysis],
-      ['Volume', n.volume_read],
-    ];
-    for (const [title, text] of sections) {
-      if (text) html += `<h4>${escHtml(title)}</h4><p>${escHtml(text)}</p>`;
-    }
-
-    if (n.risk_factors?.length) {
-      html += '<h4>Risk Factors</h4><ul>';
-      for (const r of n.risk_factors) html += `<li style="font-size:13px;color:var(--text);margin-bottom:4px">${escHtml(r)}</li>`;
-      html += '</ul>';
-    }
-    if (n.watch_for?.length) {
-      html += '<h4>Watch For</h4><ul>';
-      for (const w of n.watch_for) html += `<li style="font-size:13px;color:var(--text);margin-bottom:4px">${escHtml(w)}</li>`;
-      html += '</ul>';
-    }
-    html += '</div>';
+  // ── LLM Narrative (placeholder — loaded async) ──
+  html += '<div id="narrative-container" style="margin-top:20px">';
+  if (data.narrative) {
+    html += _renderNarrativeContent(data.narrative);
+  } else {
+    html += '<div class="market-overview-box" style="opacity:0.6"><p style="color:var(--muted);font-size:13px">Loading AI narrative...</p></div>';
   }
+  html += '</div>';
 
   // ── Institutional Holdings ──
   const inst = data.institutional;
@@ -644,6 +624,61 @@ export function renderStockAnalysis(data) {
 /**
  * Creates lightweight-charts for the stock analysis page.
  * Charts are pushed into the provided stockCharts array so app.js can destroy them.
+function _renderNarrativeContent(n) {
+  let html = '<div class="market-overview-box">';
+  if (n.headline) html += `<div class="one-liner">${escHtml(n.headline)}</div>`;
+  const sections = [
+    ['Market Structure', n.structure_analysis],
+    ['Pattern Context', n.pattern_context],
+    ['Key Levels', n.level_analysis],
+    ['Volume', n.volume_read],
+  ];
+  for (const [title, text] of sections) {
+    if (text) html += `<h4>${escHtml(title)}</h4><p>${escHtml(text)}</p>`;
+  }
+  if (n.risk_factors?.length) {
+    html += '<h4>Risk Factors</h4><ul>';
+    for (const r of n.risk_factors) html += `<li style="font-size:13px;color:var(--text);margin-bottom:4px">${escHtml(r)}</li>`;
+    html += '</ul>';
+  }
+  if (n.watch_for?.length) {
+    html += '<h4>Watch For</h4><ul>';
+    for (const w of n.watch_for) html += `<li style="font-size:13px;color:var(--text);margin-bottom:4px">${escHtml(w)}</li>`;
+    html += '</ul>';
+  }
+  html += '</div>';
+  return html;
+}
+
+/** Render narrative into the existing placeholder container. Self-contained — no external helper. */
+export function renderNarrative(narrative) {
+  const el = document.getElementById('narrative-container');
+  if (!el) return;
+  if (!narrative) {
+    el.innerHTML = '<div class="market-overview-box" style="opacity:0.5"><p style="color:var(--muted);font-size:13px">AI narrative unavailable.</p></div>';
+    return;
+  }
+  const n = narrative;
+  let h = '<div class="market-overview-box">';
+  if (n.headline) h += `<div class="one-liner">${escHtml(n.headline)}</div>`;
+  for (const [title, text] of [['Market Structure', n.structure_analysis], ['Pattern Context', n.pattern_context], ['Key Levels', n.level_analysis], ['Volume', n.volume_read]]) {
+    if (text) h += `<h4>${escHtml(title)}</h4><p>${escHtml(text)}</p>`;
+  }
+  if (n.risk_factors?.length) {
+    h += '<h4>Risk Factors</h4><ul>';
+    for (const r of n.risk_factors) h += `<li style="font-size:13px;color:var(--text);margin-bottom:4px">${escHtml(r)}</li>`;
+    h += '</ul>';
+  }
+  if (n.watch_for?.length) {
+    h += '<h4>Watch For</h4><ul>';
+    for (const w of n.watch_for) h += `<li style="font-size:13px;color:var(--text);margin-bottom:4px">${escHtml(w)}</li>`;
+    h += '</ul>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+/**
  * Updated colors per design spec.
  * @param {Object} data - API response from /stock/:ticker/price-action
  * @param {Array} stockCharts - Mutable array; created charts are pushed here
@@ -688,6 +723,12 @@ export function renderStockCharts(data, stockCharts = null) {
       wCandle.createPriceLine({ price: r.price, color: '#ef4444', lineWidth: r.strength >= 2 ? 2 : 1, lineStyle: 2, axisLabelVisible: true, title: `R ${r.price.toFixed(2)}` });
     }
 
+    // 10-week SMA overlay — indigo, visual aid for weekly structure
+    if (cd.weekly_ma_10?.length) {
+      const wMa10 = wChart.addLineSeries({ color: '#6366f1', lineWidth: 1, title: '10W SMA', lastValueVisible: false, priceLineVisible: false });
+      wMa10.setData(cd.weekly_ma_10);
+    }
+
     // Weekly swing markers
     if (cd.weekly_markers?.length) wCandle.setMarkers(cd.weekly_markers.sort((a, b) => a.time < b.time ? -1 : 1));
     wChart.timeScale().fitContent();
@@ -700,6 +741,12 @@ export function renderStockCharts(data, stockCharts = null) {
     stockCharts.push(dChart);
     const dCandle = dChart.addCandlestickSeries(candleColors);
     dCandle.setData(cd.daily_candles);
+
+    // 21 EMA overlay — short-term momentum, teal
+    if (cd.ema_21?.length) {
+      const ema21 = dChart.addLineSeries({ color: '#2dd4bf', lineWidth: 1, title: '21EMA', lastValueVisible: false, priceLineVisible: false });
+      ema21.setData(cd.ema_21);
+    }
 
     // MA50 overlay — accent color updated to #6366f1
     if (cd.ma_50?.length) {

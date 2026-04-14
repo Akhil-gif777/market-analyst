@@ -17,8 +17,23 @@ dependencies = [
     "scipy>=1.12.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "httpx>=0.27.0",
+    "playwright>=1.40.0",
+    "pytest-playwright>=0.4.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require Alpha Vantage API key and/or Ollama",
+    "slow: tests that make LLM calls (long-running)",
+    "e2e: end-to-end browser tests (require running server at localhost:8000)",
+]
 
 [project.scripts]
 server = "app.api.server:main"
