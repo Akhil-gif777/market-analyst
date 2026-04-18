@@ -468,6 +468,7 @@ async function runStockAnalysis() {
   const container = document.getElementById('stock-analysis-content');
   const funContainer = document.getElementById('stock-fundamentals-content');
   const btn = document.getElementById('btn-stock-analyze');
+  window._chartType = 'candlestick';
   btn.disabled = true;
   _destroyStockCharts();
   funContainer.innerHTML = '';
@@ -550,6 +551,49 @@ function switchChartTab(tab, btn) {
       for (const b of bar.querySelectorAll('.chart-tab')) b.classList.remove('active');
       btn.classList.add('active');
     }
+  }
+}
+
+function toggleChartFullscreen() {
+  const container = document.getElementById('stock-chart-container');
+  if (!container) return;
+  container.classList.toggle('chart-fullscreen');
+  const isFs = container.classList.contains('chart-fullscreen');
+  const fsH = window.innerHeight - 60;
+  for (const c of _stockCharts) {
+    try {
+      const el = c.chartElement();
+      const pId = el.parentElement?.id || '';
+      const normalH = pId === 'chart-daily' ? 500 : pId === 'chart-weekly' ? 400 : pId === 'chart-rsi' ? 100 : pId === 'chart-macd' ? 100 : 400;
+      c.applyOptions({ height: isFs ? fsH : normalH });
+      c.timeScale().fitContent();
+    } catch (_) {}
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const container = document.getElementById('stock-chart-container');
+    if (container?.classList.contains('chart-fullscreen')) toggleChartFullscreen();
+  }
+});
+
+function toggleChartType(btn) {
+  if (!window._chartData) return;
+  const newType = window._chartType === 'candlestick' ? 'line' : 'candlestick';
+  window._chartType = newType;
+  btn.textContent = newType === 'candlestick' ? '\u{1D4C1}' : '\u{1D4C1}';
+  btn.title = newType === 'candlestick' ? 'Switch to line' : 'Switch to candlestick';
+  // Destroy and recreate charts with new type
+  _destroyStockCharts();
+  const charts = renderStockCharts({ chart_data: window._chartData });
+  if (charts) _stockCharts = charts;
+  // Re-show the active tab
+  const activeTab = document.querySelector('.chart-tab.active');
+  if (activeTab) {
+    const panel = activeTab.textContent.trim().toLowerCase();
+    const tab = panel.includes('daily') ? 'daily' : panel.includes('weekly') ? 'weekly' : 'indicators';
+    switchChartTab(tab);
   }
 }
 
@@ -1093,6 +1137,8 @@ Object.assign(window, {
   goBack,
   shLoad,
   shViewScan,
+  toggleChartFullscreen,
+  toggleChartType,
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────

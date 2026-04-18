@@ -431,11 +431,14 @@ export function renderStockAnalysis(data) {
   const dBos = data.daily_structure?.bos ? ` | BOS: ${data.daily_structure.bos.type}` : '';
   const dChoch = data.daily_structure?.choch ? ` | CHoCH: ${data.daily_structure.choch.type}` : '';
 
-  html += `<div class="chart-container" style="margin-top:16px">
+  html += `<div class="chart-container" style="margin-top:16px" id="stock-chart-container">
     <div class="chart-tab-bar">
       <button class="chart-tab active" onclick="switchChartTab('daily',this)">Daily</button>
       <button class="chart-tab" onclick="switchChartTab('weekly',this)">Weekly</button>
       <button class="chart-tab" onclick="switchChartTab('indicators',this)">RSI &amp; MACD</button>
+      <span style="flex:1"></span>
+      <button class="chart-tool-btn" onclick="toggleChartType(this)" title="Switch candlestick / line">&#x1D4C1;</button>
+      <button class="chart-tool-btn" onclick="toggleChartFullscreen()" title="Expand chart">&#x26F6;</button>
     </div>
     <div id="chart-panel-daily" class="chart-panel">
       <div class="chart-label">Daily Structure <span class="trend-tag ${dTrend}">${dTrend}${dBos}${dChoch}</span></div>
@@ -687,6 +690,9 @@ export function renderStockCharts(data, stockCharts = null) {
   const cd = data.chart_data;
   if (!cd) return;
   if (!stockCharts) stockCharts = [];
+  // Store chart data for toggle functions (line/candle, fullscreen)
+  window._chartData = cd;
+  if (!window._chartType) window._chartType = 'candlestick';
 
   // Updated chart colors:
   // bg: #0a0e17, text-dim: #64748b, grid: #1e293b, borders: #1e293b
@@ -707,13 +713,21 @@ export function renderStockCharts(data, stockCharts = null) {
     wickUpColor: '#22c55e', wickDownColor: '#ef4444',
   };
 
+  const useLines = window._chartType === 'line';
+
   // ── Weekly chart ──
   const wEl = document.getElementById('chart-weekly');
   if (wEl && cd.weekly_candles?.length) {
     const wChart = LightweightCharts.createChart(wEl, { ...chartOpts, height: 400 });
     stockCharts.push(wChart);
-    const wCandle = wChart.addCandlestickSeries(candleColors);
-    wCandle.setData(cd.weekly_candles);
+    let wCandle;
+    if (useLines) {
+      wCandle = wChart.addLineSeries({ color: '#64748b', lineWidth: 2, priceLineVisible: true });
+      wCandle.setData(cd.weekly_candles.map(c => ({ time: c.time, value: c.close })));
+    } else {
+      wCandle = wChart.addCandlestickSeries(candleColors);
+      wCandle.setData(cd.weekly_candles);
+    }
 
     // Weekly S/R lines — axis label with S/R prefix
     for (const s of (cd.support_lines || [])) {
@@ -739,8 +753,14 @@ export function renderStockCharts(data, stockCharts = null) {
   if (dEl && cd.daily_candles?.length) {
     const dChart = LightweightCharts.createChart(dEl, { ...chartOpts, height: 500 });
     stockCharts.push(dChart);
-    const dCandle = dChart.addCandlestickSeries(candleColors);
-    dCandle.setData(cd.daily_candles);
+    let dCandle;
+    if (useLines) {
+      dCandle = dChart.addLineSeries({ color: '#64748b', lineWidth: 2, priceLineVisible: true });
+      dCandle.setData(cd.daily_candles.map(c => ({ time: c.time, value: c.close })));
+    } else {
+      dCandle = dChart.addCandlestickSeries(candleColors);
+      dCandle.setData(cd.daily_candles);
+    }
 
     // 21 EMA overlay — short-term momentum, teal
     if (cd.ema_21?.length) {
@@ -948,7 +968,7 @@ export function renderBtResults(d) {
     html += `</tbody></table></div></div>`;
   }
 
-  document.getElementById('bt-results').innerHTML = html;
+  return html;
 }
 
 // ── renderMarketData ──────────────────────────────────────────────────────────

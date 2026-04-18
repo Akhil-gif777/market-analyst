@@ -46,6 +46,7 @@ from app.analysis.price_action import (
     compute_confluence_score,
     compute_sma,
     compute_ema,
+    compute_ma_signals,
 )
 
 console = Console()
@@ -196,10 +197,16 @@ def run_backtest(
                 )
                 patterns = detect_candlestick_patterns(d_slice, levels)
                 volume = analyze_volume(d_slice)
+                ma_signals = compute_ma_signals(
+                    sma_50_series, sma_200_series, current_price,
+                    ema_21_series=ema_21_series,
+                )
 
                 score_result = compute_confluence_score(
                     weekly_structure, daily_structure, levels, patterns, volume,
-                    current_price, rsi, macd_data,
+                    current_price,
+                    rsi_data=rsi, macd_data=macd_data,
+                    ma_signals=ma_signals,
                     atr=atr, daily_prices=d_slice,
                 )
 

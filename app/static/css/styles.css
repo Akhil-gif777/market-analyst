@@ -445,6 +445,10 @@ header {
 .chart-tab { background: none; border: none; padding: 6px 14px; font-size: 12px; font-weight: 600; color: var(--text-dim); cursor: pointer; border-radius: 4px 4px 0 0; letter-spacing: 0.3px; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color var(--transition); }
 .chart-tab:hover { color: var(--text); }
 .chart-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.chart-tool-btn { background: none; border: 1px solid var(--border); padding: 4px 8px; font-size: 14px; color: var(--text-dim); cursor: pointer; border-radius: 4px; transition: color var(--transition), border-color var(--transition); }
+.chart-tool-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.chart-fullscreen { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; background: var(--bg); margin: 0 !important; border-radius: 0; overflow: auto; }
+.chart-fullscreen .chart-panel > div[id^="chart-"] { height: calc(100vh - 60px) !important; }
 .chart-panel { padding: 0; }
 
 .strat-signal-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
